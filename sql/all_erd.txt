@@ -1,0 +1,155 @@
+// 운동 관리 시스템 ERD 다이어그램
+// dbdiagram.io에서 사용할 수 있는 문법
+
+// 관리자 테이블
+Table admins {
+  id int [pk, increment]
+  username varchar(50) [unique, not null]
+  password varchar(64) [not null]
+  name varchar(100) [not null]
+  role enum('super_admin','admin') [default: 'admin']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+// 신체부위 카테고리
+Table m_body_category {
+  cat_code varchar(4) [pk] // 카테고리 코드 (예: C01)
+  cat_name_kr varchar(50) [not null] // 카테고리명 (한글)
+  cat_name_en varchar(50) [not null] // 카테고리명 (영문)
+}
+
+// 신체부위
+Table m_body_part {
+  part_code varchar(4) [pk] // 신체부위 코드 (예: B01)
+  cat_code varchar(4) [not null] // 카테고리 코드 (상체/하체)
+  part_name_kr varchar(50) [not null] // 신체부위명 (한글)
+  part_name_en varchar(50) [not null] // 신체부위명 (영문)
+}
+
+// 신체부위 세부존
+Table m_part_zone {
+  zone_code varchar(7) [pk] // 세부부위 코드 (예: Z-CH-UP)
+  part_code varchar(4) [not null] // 상위 신체부위 코드 (예: B03=가슴)
+  zone_name_kr varchar(80) [not null] // 세부부위명(한글)
+  zone_name_en varchar(120) [not null] // 세부부위명(영문)
+}
+
+// 근육
+Table m_muscle {
+  muscle_code varchar(6) [pk] // 근육 코드 (예: M1201)
+  part_code varchar(4) [not null] // 신체부위 코드 (예: B02)
+  name_kr varchar(80) [not null] // 근육(또는 근육군) 이름 - 한글
+  name_en varchar(120) [not null] // 근육(또는 근육군) 이름 - 영어
+  note varchar(255) // 비고 (선택)
+}
+
+// 운동 마스터
+Table m_exercise {
+  ex_id int [pk, increment]
+  name_kr varchar(120) [not null] // 운동명 (한글)
+  name_en varchar(160) // 운동명 (영문)
+  equipment varchar(60) // Barbell/Dumbbell/Machine/Bodyweight
+  angle varchar(40) // Flat/Incline/Decline 등
+  movement varchar(40) // Press/Pull/Extension/Curl 등
+  note varchar(255) // 비고
+}
+
+// 운동 별칭
+Table m_exercise_alias {
+  alias varchar(160) [pk] // 운동 별칭/동의어
+  ex_id int [not null] // 운동 ID
+}
+
+// 운동-세부존 매핑
+Table m_exercise_zone_target {
+  ex_id int [not null] // 운동 ID
+  zone_code varchar(7) [not null] // 세부부위 코드
+  priority tinyint [not null, default: 1] // 1=Primary, 2=Secondary, 3=Tertiary
+  weight decimal(4,2) [not null, default: 1.00] // 기여도(합계 자유)
+  
+  indexes {
+    (ex_id, zone_code, priority) [pk]
+  }
+}
+
+// 운동-근육 매핑
+Table m_exercise_muscle_target {
+  ex_id int [not null] // 운동 ID
+  muscle_code varchar(6) [not null] // 근육 코드
+  priority tinyint [not null, default: 1] // 우선순위
+  weight decimal(4,2) [not null, default: 1.00] // 기여도
+  
+  indexes {
+    (ex_id, muscle_code, priority) [pk]
+  }
+}
+
+// 운동 세션
+Table m_workout_session {
+  session_id bigint [pk, increment]
+  user_id bigint [not null] // 사용자 ID
+  workout_date date [not null] // 운동 날짜
+  note varchar(255) // 메모
+  
+  indexes {
+    (user_id, workout_date) [unique]
+  }
+}
+
+// 세션-운동 목록
+Table m_workout_exercise {
+  wx_id bigint [pk, increment]
+  session_id bigint [not null] // 세션 ID
+  ex_id int [not null] // 운동 ID
+  order_no int [not null, default: 1] // 운동 순서
+  note varchar(255) // 메모
+}
+
+// 세트 기록
+Table m_workout_set {
+  set_id bigint [pk, increment]
+  wx_id bigint [not null] // 운동 ID
+  set_no int [not null] // 세트 번호
+  weight decimal(6,2) // 무게 (kg)
+  reps int // 반복 횟수
+  rir tinyint // 남긴 반복(RIR) 옵션
+}
+
+// 관계 정의
+Ref: m_body_part.cat_code > m_body_category.cat_code
+Ref: m_part_zone.part_code > m_body_part.part_code
+Ref: m_muscle.part_code > m_body_part.part_code
+Ref: m_exercise_alias.ex_id > m_exercise.ex_id
+Ref: m_exercise_zone_target.ex_id > m_exercise.ex_id
+Ref: m_exercise_zone_target.zone_code > m_part_zone.zone_code
+Ref: m_exercise_muscle_target.ex_id > m_exercise.ex_id
+Ref: m_exercise_muscle_target.muscle_code > m_muscle.muscle_code
+Ref: m_workout_exercise.session_id > m_workout_session.session_id
+Ref: m_workout_exercise.ex_id > m_exercise.ex_id
+Ref: m_workout_set.wx_id > m_workout_exercise.wx_id
+
+// 테이블 그룹화 (시각적 구분을 위해)
+TableGroup master_data {
+  m_body_category
+  m_body_part
+  m_part_zone
+  m_muscle
+  m_exercise
+  m_exercise_alias
+}
+
+TableGroup mapping_data {
+  m_exercise_zone_target
+  m_exercise_muscle_target
+}
+
+TableGroup workout_data {
+  m_workout_session
+  m_workout_exercise
+  m_workout_set
+}
+
+TableGroup admin_data {
+  admins
+}
