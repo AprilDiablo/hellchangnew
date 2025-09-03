@@ -54,6 +54,32 @@ $user = getCurrentUser();
             font-weight: 600;
         }
         
+        .card-header h5 {
+            color: white !important;
+        }
+        
+        .card-header .text-muted {
+            color: rgba(255, 255, 255, 0.8) !important;
+        }
+        
+        .card-header a {
+            transition: all 0.2s ease;
+        }
+        
+        .card-header a:hover {
+            transform: scale(1.05);
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+        
+        .exercise-name a:hover {
+            color: #007bff !important;
+            text-decoration: underline !important;
+        }
+        
+        .exercise-name a:hover strong {
+            color: #007bff !important;
+        }
+        
         .btn-custom { 
             border-radius: 0.35rem; 
             padding: 0.375rem 0.75rem; 
@@ -80,16 +106,17 @@ $user = getCurrentUser();
             border-top: 1px solid #e3e6f0; 
             box-shadow: 0 -0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
             z-index: 1000; 
-            padding: 0.5rem 0; 
+            padding: 0.3rem 0; 
         }
         
         .bottom-nav .nav-link { 
             color: #858796; 
             text-decoration: none; 
             text-align: center; 
-            padding: 0.5rem; 
+            padding: 0.8rem 0.1rem; 
             border-radius: 0.35rem; 
             transition: all 0.15s ease-in-out; 
+            margin: 0 0.05rem;
         }
         
         .bottom-nav .nav-link:hover, .bottom-nav .nav-link.active { 
@@ -104,15 +131,23 @@ $user = getCurrentUser();
         }
         
         .bottom-nav .nav-link i { 
-            font-size: 1.1rem; 
+            font-size: 1.3rem; 
             display: block; 
-            margin-bottom: 0.25rem; 
+            margin-bottom: 0.2rem; 
         }
         
         .bottom-nav .nav-link span { 
-            font-size: 0.8rem; 
+            font-size: 0.75rem; 
             display: block; 
             font-weight: 600;
+        }
+        
+        .bottom-nav .row {
+            margin: 0;
+        }
+        
+        .bottom-nav .col {
+            padding: 0;
         }
         
         .date-navigation {
@@ -145,6 +180,102 @@ $user = getCurrentUser();
             margin: 0;
             padding: 0;
             font-size: 0.9rem;
+        }
+        
+        /* 근육 분석 스타일 */
+        .muscle-summary-section {
+            border-top: 2px solid #e9ecef;
+            padding-top: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .muscle-analysis-section {
+            border-top: 1px solid #e9ecef;
+            padding-top: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .part-summary-item {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            transition: all 0.2s ease;
+        }
+        
+        .part-summary-item:hover {
+            background: #e9ecef;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .toggle-icon {
+            transition: transform 0.3s ease;
+            color: #6c757d;
+        }
+        
+        .part-summary-item:hover .toggle-icon {
+            color: #495057;
+        }
+        
+        .part-details {
+            border-top: 1px solid #e9ecef;
+            padding-top: 0.5rem;
+        }
+        
+        .muscle-analysis {
+            /* 스크롤 제거 - 모든 항목을 나열 */
+        }
+        
+        .muscle-item {
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            background: #f8f9fa;
+            border-left: 3px solid #4e73df;
+        }
+        
+        .muscle-item:hover {
+            background: #e9ecef;
+        }
+        
+        .progress {
+            background-color: #e9ecef;
+        }
+        
+        .progress-bar {
+            background: linear-gradient(90deg, #4e73df 0%, #224abe 100%);
+            transition: width 0.6s ease;
+        }
+        
+        .exercise-row {
+            transition: all 0.2s ease;
+        }
+        
+        .exercise-row:hover {
+            background-color: #f8f9fa;
+            transform: translateY(-1px);
+        }
+        
+        .date-navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding: 1rem;
+            background: white;
+            border-radius: 0.35rem;
+            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+        }
+        
+        .date-display {
+            flex: 1;
+            text-align: center;
+            margin: 0 1rem;
+        }
+        
+        .date-display input {
+            max-width: 200px;
+            margin: 0 auto;
         }
     </style>
 </head>

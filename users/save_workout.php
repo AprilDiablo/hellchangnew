@@ -19,7 +19,17 @@ try {
 
     // POST 데이터 읽기
     $input = file_get_contents('php://input');
-    $workouts = json_decode($input, true);
+    $data = json_decode($input, true);
+
+    if (!$data) {
+        throw new Exception('데이터가 올바르지 않습니다.');
+    }
+
+    // 수정 모드인지 확인
+    $editMode = isset($data['editMode']) ? $data['editMode'] : false;
+    $editSessionId = isset($data['editSessionId']) ? $data['editSessionId'] : null;
+    $editExerciseId = isset($data['editExerciseId']) ? $data['editExerciseId'] : null;
+    $workouts = isset($data['workouts']) ? $data['workouts'] : $data;
 
     if (!$workouts || !is_array($workouts)) {
         throw new Exception('운동 데이터가 올바르지 않습니다.');
@@ -29,22 +39,51 @@ try {
     $pdo->beginTransaction();
 
     try {
-        // 오늘 날짜의 운동 세션 생성 또는 가져오기
-        $today = date('Y-m-d');
-        
-        $stmt = $pdo->prepare('
-            INSERT INTO m_workout_session (user_id, workout_date, note) 
-            VALUES (?, ?, ?) 
-            ON DUPLICATE KEY UPDATE session_id = LAST_INSERT_ID(session_id)
-        ');
-        $stmt->execute([$user['id'], $today, '오늘의 운동']);
-        
-        $sessionId = $pdo->lastInsertId();
-        if (!$sessionId) {
-            // 이미 존재하는 세션 ID 가져오기
-            $stmt = $pdo->prepare('SELECT session_id FROM m_workout_session WHERE user_id = ? AND workout_date = ?');
-            $stmt->execute([$user['id'], $today]);
-            $sessionId = $stmt->fetchColumn();
+        if ($editMode) {
+            // 수정 모드
+            if ($editSessionId) {
+                // 운동 세션 수정
+                // 기존 운동들 삭제
+                $stmt = $pdo->prepare('DELETE FROM m_workout_exercise WHERE session_id = ?');
+                $stmt->execute([$editSessionId]);
+                
+                $sessionId = $editSessionId;
+                
+            } elseif ($editExerciseId) {
+                // 개별 운동 수정
+                // 기존 운동 삭제
+                $stmt = $pdo->prepare('DELETE FROM m_workout_exercise WHERE wx_id = ?');
+                $stmt->execute([$editExerciseId]);
+                
+                // 세션 ID 가져오기
+                $stmt = $pdo->prepare('SELECT session_id FROM m_workout_exercise WHERE wx_id = ?');
+                $stmt->execute([$editExerciseId]);
+                $sessionId = $stmt->fetchColumn();
+                
+                if (!$sessionId) {
+                    throw new Exception('세션을 찾을 수 없습니다.');
+                }
+            } else {
+                throw new Exception('수정할 세션이나 운동을 지정해주세요.');
+            }
+        } else {
+            // 새로 생성 모드
+            $today = date('Y-m-d');
+            
+            $stmt = $pdo->prepare('
+                INSERT INTO m_workout_session (user_id, workout_date, note) 
+                VALUES (?, ?, ?) 
+                ON DUPLICATE KEY UPDATE session_id = LAST_INSERT_ID(session_id)
+            ');
+            $stmt->execute([$user['id'], $today, '오늘의 운동']);
+            
+            $sessionId = $pdo->lastInsertId();
+            if (!$sessionId) {
+                // 이미 존재하는 세션 ID 가져오기
+                $stmt = $pdo->prepare('SELECT session_id FROM m_workout_session WHERE user_id = ? AND workout_date = ?');
+                $stmt->execute([$user['id'], $today]);
+                $sessionId = $stmt->fetchColumn();
+            }
         }
 
         // 운동 기록 저장
@@ -68,11 +107,16 @@ try {
 
         $pdo->commit();
         
+        // 운동 날짜 가져오기
+        $stmt = $pdo->prepare('SELECT workout_date FROM m_workout_session WHERE session_id = ?');
+        $stmt->execute([$sessionId]);
+        $workoutDate = $stmt->fetchColumn();
+        
         echo json_encode([
             'success' => true,
-            'message' => '운동이 성공적으로 기록되었습니다.',
+            'message' => $editMode ? '운동이 성공적으로 수정되었습니다.' : '운동이 성공적으로 기록되었습니다.',
             'session_id' => $sessionId,
-            'redirect_url' => 'my_workouts.php?date=' . $today
+            'redirect_url' => 'my_workouts.php?date=' . $workoutDate
         ]);
 
     } catch (Exception $e) {
