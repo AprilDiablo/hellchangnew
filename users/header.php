@@ -25,7 +25,7 @@ $user = getCurrentUser();
             background: #f8f9fc;
             min-height: 100vh;
             font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            padding-bottom: 60px;
+            padding-bottom: 100px;
         }
         
         .container { 
@@ -154,6 +154,7 @@ $user = getCurrentUser();
             display: flex;
             justify-content: space-between;
             align-items: center;
+            margin-top: 1rem;
             margin-bottom: 1.5rem;
         }
         

@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS `m_exercise` (
   PRIMARY KEY (`ex_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=62 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='운동 마스터';
 
--- 테이블 데이터 hellchang.m_exercise:~59 rows (대략적) 내보내기
+-- 테이블 데이터 hellchang.m_exercise:~58 rows (대략적) 내보내기
 INSERT IGNORE INTO `m_exercise` (`ex_id`, `name_kr`, `name_en`, `equipment`, `equipment_kr`, `angle`, `angle_kr`, `movement`, `movement_kr`, `note`) VALUES
 	(1, '벤치프레스', 'Barbell Bench Press', 'Barbell', '바벨', 'Flat', '평평', 'Press', '프레스', NULL),
 	(2, '인클라인 덤벨 프레스', 'Incline Dumbbell Press', 'Dumbbell', '덤벨', 'Incline', '경사 위', 'Press', '프레스', NULL),
@@ -174,7 +174,6 @@ INSERT IGNORE INTO `m_exercise` (`ex_id`, `name_kr`, `name_en`, `equipment`, `eq
 	(21, '덤벨 로우', 'Dumbbell Row', 'Dumbbell', '덤벨', 'Flat', '평평', 'Pull', '풀', NULL),
 	(22, '케이블 로우', 'Cable Row', 'Cable', '케이블', 'Flat', '평평', 'Pull', '풀', NULL),
 	(23, '풀업', 'Pull-up', 'Bodyweight', '맨몸', 'Flat', '평평', 'Pull', '풀', NULL),
-	(24, '바벨 컬', 'Barbell Curl', 'Barbell', '바벨', 'Flat', '평평', 'Curl', '컬', NULL),
 	(25, '덤벨 컬', 'Dumbbell Curl', 'Dumbbell', '덤벨', 'Flat', '평평', 'Curl', '컬', NULL),
 	(26, '해머 컬', 'Hammer Curl', 'Dumbbell', '덤벨', 'Flat', '평평', 'Curl', '컬', NULL),
 	(27, '케이블 컬', 'Cable Curl', 'Cable', '케이블', 'Flat', '평평', 'Curl', '컬', NULL),
@@ -220,7 +219,7 @@ CREATE TABLE IF NOT EXISTS `m_exercise_alias` (
   CONSTRAINT `fk_alias_ex` FOREIGN KEY (`ex_id`) REFERENCES `m_exercise` (`ex_id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='운동 별칭';
 
--- 테이블 데이터 hellchang.m_exercise_alias:~75 rows (대략적) 내보내기
+-- 테이블 데이터 hellchang.m_exercise_alias:~74 rows (대략적) 내보내기
 INSERT IGNORE INTO `m_exercise_alias` (`alias`, `ex_id`) VALUES
 	('인클라인 DB 프레스', 2),
 	('DB 벤치', 4),
@@ -240,7 +239,6 @@ INSERT IGNORE INTO `m_exercise_alias` (`alias`, `ex_id`) VALUES
 	('바벨 데드', 18),
 	('바벨 로우', 20),
 	('덤벨 로우', 21),
-	('바벨 컬', 24),
 	('덤벨 컬', 25),
 	('해머 컬', 26),
 	('바벨 숄더', 28),
@@ -310,7 +308,7 @@ CREATE TABLE IF NOT EXISTS `m_exercise_muscle_target` (
   CONSTRAINT `fk_ex_muscle_m` FOREIGN KEY (`muscle_code`) REFERENCES `m_muscle` (`muscle_code`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='운동-근육 매핑';
 
--- 테이블 데이터 hellchang.m_exercise_muscle_target:~132 rows (대략적) 내보내기
+-- 테이블 데이터 hellchang.m_exercise_muscle_target:~131 rows (대략적) 내보내기
 INSERT IGNORE INTO `m_exercise_muscle_target` (`ex_id`, `muscle_code`, `priority`, `weight`) VALUES
 	(1, 'M1201', 2, 0.40),
 	(1, 'M1302', 1, 1.00),
@@ -364,7 +362,6 @@ INSERT IGNORE INTO `m_exercise_muscle_target` (`ex_id`, `muscle_code`, `priority
 	(22, 'M1402', 1, 1.00),
 	(23, 'M1401', 1, 1.00),
 	(23, 'M1402', 1, 1.00),
-	(24, 'M1601', 1, 1.00),
 	(25, 'M1601', 1, 1.00),
 	(26, 'M1601', 1, 1.00),
 	(27, 'M1601', 1, 1.00),
@@ -457,7 +454,7 @@ CREATE TABLE IF NOT EXISTS `m_exercise_zone_target` (
   CONSTRAINT `fk_ex_zone_zone` FOREIGN KEY (`zone_code`) REFERENCES `m_part_zone` (`zone_code`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='운동-세부존 매핑';
 
--- 테이블 데이터 hellchang.m_exercise_zone_target:~83 rows (대략적) 내보내기
+-- 테이블 데이터 hellchang.m_exercise_zone_target:~82 rows (대략적) 내보내기
 INSERT IGNORE INTO `m_exercise_zone_target` (`ex_id`, `zone_code`, `priority`, `weight`) VALUES
 	(1, 'Z-AR-TR', 2, 0.60),
 	(1, 'Z-CH-MD', 1, 1.00),
@@ -505,7 +502,6 @@ INSERT IGNORE INTO `m_exercise_zone_target` (`ex_id`, `zone_code`, `priority`, `
 	(22, 'Z-BK-UP', 1, 1.00),
 	(23, 'Z-BK-MD', 1, 1.00),
 	(23, 'Z-BK-UP', 1, 1.00),
-	(24, 'Z-AR-BI', 1, 1.00),
 	(25, 'Z-AR-BI', 1, 1.00),
 	(26, 'Z-AR-BI', 1, 1.00),
 	(27, 'Z-AR-BI', 1, 1.00),
@@ -715,9 +711,9 @@ CREATE TABLE IF NOT EXISTS `m_workout_exercise` (
   KEY `idx_wx_ex` (`ex_id`),
   CONSTRAINT `fk_wx_ex` FOREIGN KEY (`ex_id`) REFERENCES `m_exercise` (`ex_id`) ON UPDATE CASCADE,
   CONSTRAINT `fk_wx_session` FOREIGN KEY (`session_id`) REFERENCES `m_workout_session` (`session_id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=36 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='세션-운동 목록';
+) ENGINE=InnoDB AUTO_INCREMENT=49 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='세션-운동 목록';
 
--- 테이블 데이터 hellchang.m_workout_exercise:~15 rows (대략적) 내보내기
+-- 테이블 데이터 hellchang.m_workout_exercise:~17 rows (대략적) 내보내기
 INSERT IGNORE INTO `m_workout_exercise` (`wx_id`, `session_id`, `ex_id`, `order_no`, `weight`, `reps`, `sets`, `note`, `original_exercise_name`) VALUES
 	(1, 1, 1, 1, NULL, NULL, NULL, NULL, NULL),
 	(2, 1, 2, 2, NULL, NULL, NULL, NULL, NULL),
@@ -730,10 +726,12 @@ INSERT IGNORE INTO `m_workout_exercise` (`wx_id`, `session_id`, `ex_id`, `order_
 	(9, 4, 4, 1, 10.00, 15, 2, NULL, '덤벨 벤치 프레스'),
 	(10, 4, 12, 2, 20.00, 10, 1, NULL, '바벨 스쿼트'),
 	(11, 4, 3, 3, 5.00, 12, 8, NULL, '라잉 트라이셉스 익스텐션'),
-	(32, 9, 56, 1, 30.00, 15, 5, NULL, '암 풀 다운'),
-	(33, 9, 57, 2, 60.00, 10, 5, NULL, '어시스트 풀업'),
-	(34, 9, 58, 3, 40.00, 12, 5, NULL, '랫 풀 다운'),
-	(35, 9, 20, 4, 20.00, 15, 4, NULL, '바벨 로우');
+	(42, 9, 20, 1, 20.00, 15, 4, NULL, '바벨 로우'),
+	(43, 9, 60, 2, 20.00, 10, 4, NULL, '바벨 컬'),
+	(44, 9, 56, 3, 30.00, 15, 5, NULL, '암 풀 다운'),
+	(45, 9, 57, 4, 60.00, 10, 5, NULL, '어시스트 풀업'),
+	(46, 9, 58, 5, 40.00, 12, 5, NULL, '랫 풀 다운'),
+	(48, 9, 61, 7, 15.00, 12, 3, NULL, '인클라인 덤벨 컬');
 
 -- 테이블 hellchang.m_workout_session 구조 내보내기
 CREATE TABLE IF NOT EXISTS `m_workout_session` (
@@ -759,12 +757,39 @@ CREATE TABLE IF NOT EXISTS `m_workout_set` (
   `weight` decimal(6,2) DEFAULT NULL,
   `reps` int(11) DEFAULT NULL,
   `rir` tinyint(4) DEFAULT NULL COMMENT '남긴 반복(RIR) 옵션',
+  `completed_at` timestamp NULL DEFAULT NULL COMMENT '세트 완료 시간',
+  `rest_time` int(11) DEFAULT NULL COMMENT '휴식 시간(초)',
+  `total_time` int(11) DEFAULT NULL COMMENT '총 운동 시간(초)',
   PRIMARY KEY (`set_id`),
   KEY `idx_ws_wx` (`wx_id`),
   CONSTRAINT `fk_ws_wx` FOREIGN KEY (`wx_id`) REFERENCES `m_workout_exercise` (`wx_id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='세트 기록';
+) ENGINE=InnoDB AUTO_INCREMENT=36 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='세트 기록';
 
--- 테이블 데이터 hellchang.m_workout_set:~0 rows (대략적) 내보내기
+-- 테이블 데이터 hellchang.m_workout_set:~23 rows (대략적) 내보내기
+INSERT IGNORE INTO `m_workout_set` (`set_id`, `wx_id`, `set_no`, `weight`, `reps`, `rir`, `completed_at`, `rest_time`, `total_time`) VALUES
+	(9, 42, 1, 20.00, 15, NULL, '2025-09-03 09:05:29', 1, 15),
+	(10, 42, 2, 20.00, 15, NULL, '2025-09-03 09:05:29', 3, 15),
+	(11, 42, 3, 20.00, 15, NULL, '2025-09-03 09:05:29', 4, 15),
+	(12, 42, 4, 20.00, 15, NULL, '2025-09-03 09:05:29', 7, 15),
+	(13, 43, 1, 20.00, 10, NULL, '2025-09-04 05:59:16', 2, 5),
+	(14, 43, 2, 20.00, 10, NULL, '2025-09-04 05:59:16', 3, 5),
+	(15, 43, 3, 20.00, 10, NULL, '2025-09-04 05:59:16', 0, 5),
+	(16, 43, 4, 20.00, 10, NULL, '2025-09-04 05:59:16', 0, 5),
+	(17, 44, 1, 30.00, 15, NULL, '2025-09-04 05:59:40', 3, 3),
+	(18, 44, 2, 30.00, 15, NULL, '2025-09-04 05:59:40', 0, 3),
+	(19, 44, 3, 30.00, 15, NULL, '2025-09-04 05:59:40', 0, 3),
+	(20, 44, 4, 30.00, 15, NULL, '2025-09-04 05:59:40', 0, 3),
+	(21, 44, 5, 30.00, 15, NULL, '2025-09-04 05:59:40', 0, 3),
+	(22, 45, 1, 60.00, 10, NULL, '2025-09-04 06:01:37', 1, 1),
+	(23, 45, 2, 60.00, 10, NULL, '2025-09-04 06:01:37', 0, 1),
+	(24, 45, 3, 60.00, 10, NULL, '2025-09-04 06:01:37', 0, 1),
+	(25, 45, 4, 60.00, 10, NULL, '2025-09-04 06:01:37', 0, 1),
+	(26, 45, 5, 60.00, 10, NULL, '2025-09-04 06:01:37', 0, 1),
+	(27, 46, 1, 40.00, 12, NULL, '2025-09-04 06:03:06', 0, 0),
+	(28, 46, 2, 40.00, 12, NULL, '2025-09-04 06:03:06', 0, 0),
+	(29, 46, 3, 40.00, 12, NULL, '2025-09-04 06:03:06', 0, 0),
+	(30, 46, 4, 40.00, 12, NULL, '2025-09-04 06:03:06', 0, 0),
+	(31, 46, 5, 40.00, 12, NULL, '2025-09-04 06:03:06', 0, 0);
 
 -- 테이블 hellchang.sessions 구조 내보내기
 CREATE TABLE IF NOT EXISTS `sessions` (
@@ -779,9 +804,9 @@ CREATE TABLE IF NOT EXISTS `sessions` (
   KEY `idx_sessions_token` (`session_token`) USING BTREE,
   KEY `idx_sessions_expires` (`expires_at`) USING BTREE,
   CONSTRAINT `sessions_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=49 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=51 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- 테이블 데이터 hellchang.sessions:~7 rows (대략적) 내보내기
+-- 테이블 데이터 hellchang.sessions:~9 rows (대략적) 내보내기
 INSERT IGNORE INTO `sessions` (`id`, `user_id`, `session_token`, `expires_at`, `created_at`) VALUES
 	(42, 6, 'b91c0d9e2d54eb5a18ee81276ac5d6d8cf31cba70e0b2066973626f02d69b71a', '2025-09-26 15:52:52', '2025-08-28 00:52:52'),
 	(43, 6, 'e8ff4cb341cf403bd2b0be825adde845fad1d33d66652397c20451c0e246050c', '2025-09-26 16:22:21', '2025-08-28 01:22:21'),
@@ -789,7 +814,9 @@ INSERT IGNORE INTO `sessions` (`id`, `user_id`, `session_token`, `expires_at`, `
 	(45, 6, '7828e204d2fdabb08969409589d297717e9231b49cd908ba1241082dca764159', '2025-09-28 20:33:24', '2025-08-30 05:33:24'),
 	(46, 6, '8e15de7c54240c4158dfdf8e4a5af7e38829cfe495aef503d88af216cda66dae', '2025-09-29 00:02:26', '2025-08-30 09:02:26'),
 	(47, 6, 'ed0941eb9498b8bc33481beb26b45017d8827e2bfecf658c3fad81fe5998a61c', '2025-10-02 01:27:34', '2025-09-02 10:27:34'),
-	(48, 6, '393d1d0ec449b27502fd9e28ad7f2145e962e5b3db7ff52cad36763774f7814a', '2025-10-02 16:37:05', '2025-09-03 01:37:05');
+	(48, 6, '393d1d0ec449b27502fd9e28ad7f2145e962e5b3db7ff52cad36763774f7814a', '2025-10-02 16:37:05', '2025-09-03 01:37:05'),
+	(49, 6, 'fb4cd4f41fe638d1fddfafb20544616c0176c581d4182372ed644b155fd51f94', '2025-10-03 20:45:04', '2025-09-04 05:45:04'),
+	(50, 6, '89a229ae90847eb7b1a8f2f2efe63204c0c6a2ebf0d561ea2a76961de54aed61', '2025-10-03 20:55:22', '2025-09-04 05:55:22');
 
 -- 테이블 hellchang.trainer_assessments 구조 내보내기
 CREATE TABLE IF NOT EXISTS `trainer_assessments` (
@@ -930,7 +957,7 @@ CREATE TABLE IF NOT EXISTS `users` (
 
 -- 테이블 데이터 hellchang.users:~12 rows (대략적) 내보내기
 INSERT IGNORE INTO `users` (`id`, `kakao_id`, `username`, `email`, `profile_image`, `created_at`, `updated_at`, `is_active`, `password`) VALUES
-	(6, 4351964716, '라그리마', 'kakao_4351964716@hellchang.com', 'http://k.kakaocdn.net/dn/cAmkWq/btsyPBsH7bM/MZvR2kmF4RaQGOPrEEyfp1/img_640x640.jpg', '2025-08-28 00:52:05', '2025-09-03 01:37:05', 1, NULL),
+	(6, 4351964716, '라그리마', 'kakao_4351964716@hellchang.com', 'http://k.kakaocdn.net/dn/cAmkWq/btsyPBsH7bM/MZvR2kmF4RaQGOPrEEyfp1/img_640x640.jpg', '2025-08-28 00:52:05', '2025-09-04 05:55:22', 1, NULL),
 	(7, 1000000001, '김태희', 'kimtaehee@hellchang.com', 'https://example.com/profiles/kimtaehee.jpg', '2025-08-30 08:32:37', '2025-08-30 08:32:37', 1, NULL),
 	(8, 1000000002, '현빈', 'hyunbin@hellchang.com', 'https://example.com/profiles/hyunbin.jpg', '2025-08-30 08:32:37', '2025-08-30 08:32:37', 1, NULL),
 	(9, 1000000003, '손예진', 'sonyejin@hellchang.com', 'https://example.com/profiles/sonyejin.jpg', '2025-08-30 08:32:37', '2025-08-30 08:32:37', 1, NULL),
