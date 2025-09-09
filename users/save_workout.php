@@ -75,7 +75,7 @@ try {
                 VALUES (?, ?, ?) 
                 ON DUPLICATE KEY UPDATE session_id = LAST_INSERT_ID(session_id)
             ');
-            $stmt->execute([$user['id'], $today, '오늘의 운동']);
+            $stmt->execute([$user['id'], $today, '']);
             
             $sessionId = $pdo->lastInsertId();
             if (!$sessionId) {
@@ -86,23 +86,62 @@ try {
             }
         }
 
-        // 운동 기록 저장
-        foreach ($workouts as $index => $workout) {
-            $stmt = $pdo->prepare('
-                INSERT INTO m_workout_exercise 
-                (session_id, ex_id, order_no, weight, reps, sets, original_exercise_name) 
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ');
+        // 운동 기록 저장 (순서대로)
+        foreach ($workouts as $workout) {
+            $isTemp = isset($workout['is_temp']) && $workout['is_temp'];
+            $orderNo = isset($workout['order_no']) ? $workout['order_no'] : 1;
             
-            $stmt->execute([
-                $sessionId,
-                $workout['exercise_id'],
-                $index + 1,
-                $workout['weight'],
-                $workout['reps'],
-                $workout['sets'],
-                $workout['exercise_name']
-            ]);
+            if ($isTemp) {
+                // 임시 운동인 경우
+                // 1. 임시 운동 마스터에 저장 (중복 체크)
+                $stmt = $pdo->prepare('SELECT temp_ex_id FROM m_temp_exercise WHERE user_id = ? AND exercise_name = ?');
+                $stmt->execute([$user['id'], $workout['exercise_name']]);
+                $tempExId = $stmt->fetchColumn();
+                
+                if (!$tempExId) {
+                    // 존재하지 않으면 새로 생성
+                    $stmt = $pdo->prepare('INSERT INTO m_temp_exercise (user_id, exercise_name, status) VALUES (?, ?, ?)');
+                    $stmt->execute([$user['id'], $workout['exercise_name'], 'pending']);
+                    $tempExId = $pdo->lastInsertId();
+                }
+                
+                // 2. 운동 계획에 임시 운동으로 저장
+                $stmt = $pdo->prepare('
+                    INSERT INTO m_workout_exercise 
+                    (session_id, ex_id, order_no, weight, reps, sets, original_exercise_name, temp_ex_id, is_temp) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ');
+                
+                $stmt->execute([
+                    $sessionId,
+                    null, // ex_id는 null
+                    $orderNo,
+                    $workout['weight'],
+                    $workout['reps'],
+                    $workout['sets'],
+                    $workout['exercise_name'],
+                    $tempExId,
+                    1 // is_temp = 1
+                ]);
+            } else {
+                // 정식 운동인 경우
+                $stmt = $pdo->prepare('
+                    INSERT INTO m_workout_exercise 
+                    (session_id, ex_id, order_no, weight, reps, sets, original_exercise_name, is_temp) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ');
+                
+                $stmt->execute([
+                    $sessionId,
+                    $workout['exercise_id'],
+                    $orderNo,
+                    $workout['weight'],
+                    $workout['reps'],
+                    $workout['sets'],
+                    $workout['exercise_name'],
+                    0 // is_temp = 0
+                ]);
+            }
         }
 
         $pdo->commit();

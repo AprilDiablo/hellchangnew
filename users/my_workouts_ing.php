@@ -17,6 +17,7 @@ $pageSubtitle = '운동 기록을 확인해보세요';
 
 // 날짜 파라미터 (기본값: 오늘)
 $date = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
+$sessionIdParam = isset($_GET['session_id']) ? (int)$_GET['session_id'] : null;
 
 $message = isset($_GET['message']) ? $_GET['message'] : '';
 $error = '';
@@ -28,7 +29,67 @@ if ($_POST) {
         $pdo->beginTransaction();
         
         if (isset($_POST['action'])) {
-            if ($_POST['action'] === 'delete_session') {
+            if ($_POST['action'] === 'start_workout') {
+                // 운동 시작시간 저장
+                $session_id = $_POST['session_id'];
+                
+                // 사용자 권한 확인
+                $stmt = $pdo->prepare("SELECT user_id FROM m_workout_session WHERE session_id = ? AND user_id = ?");
+                $stmt->execute([$session_id, $user['id']]);
+                if (!$stmt->fetch()) {
+                    throw new Exception("권한이 없습니다.");
+                }
+                
+                // 시작시간이 없으면 현재 시간으로 저장
+                $stmt = $pdo->prepare("UPDATE m_workout_session SET start_time = NOW() WHERE session_id = ? AND start_time IS NULL");
+                $stmt->execute([$session_id]);
+                
+                $message = "운동이 시작되었습니다.";
+                
+            } elseif ($_POST['action'] === 'end_workout') {
+                // 운동 종료시간 저장
+                $session_id = $_POST['session_id'];
+                
+                // 사용자 권한 확인
+                $stmt = $pdo->prepare("SELECT user_id FROM m_workout_session WHERE session_id = ? AND user_id = ?");
+                $stmt->execute([$session_id, $user['id']]);
+                if (!$stmt->fetch()) {
+                    throw new Exception("권한이 없습니다.");
+                }
+                
+                // 종료시간이 없으면 현재 시간으로 저장
+                $stmt = $pdo->prepare("UPDATE m_workout_session SET end_time = NOW() WHERE session_id = ? AND end_time IS NULL");
+                $stmt->execute([$session_id]);
+                
+                $message = "운동이 종료되었습니다.";
+                
+            } elseif ($_POST['action'] === 'update_workout_time') {
+                // 운동 시간 수정
+                $session_id = $_POST['session_id'];
+                $start_time = $_POST['start_time'] ?: null;
+                $end_time = $_POST['end_time'] ?: null;
+                
+                // 사용자 권한 확인
+                $stmt = $pdo->prepare("SELECT user_id FROM m_workout_session WHERE session_id = ? AND user_id = ?");
+                $stmt->execute([$session_id, $user['id']]);
+                if (!$stmt->fetch()) {
+                    throw new Exception("권한이 없습니다.");
+                }
+                
+                // 시간 업데이트
+                $stmt = $pdo->prepare("UPDATE m_workout_session SET start_time = ?, end_time = ? WHERE session_id = ?");
+                $stmt->execute([$start_time, $end_time, $session_id]);
+                
+                // AJAX 요청인 경우 JSON 응답
+                if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => true, 'message' => '운동 시간이 수정되었습니다.']);
+                    exit;
+                }
+                
+                $message = "운동 시간이 수정되었습니다.";
+                
+            } elseif ($_POST['action'] === 'delete_session') {
                 // 운동 세션 삭제
                 $session_id = $_POST['session_id'];
                 
@@ -81,24 +142,56 @@ if ($_POST) {
     }
 }
 
-// 해당 날짜의 모든 운동 세션 가져오기 (회차별로)
+// 세션 단건 보기 또는 날짜별 보기 분기
 $pdo = getDB();
-$stmt = $pdo->prepare('
-    SELECT ws.*, 
-           COUNT(we.wx_id) as exercise_count,
-           SUM(we.weight * we.reps * we.sets) as total_volume
-    FROM m_workout_session ws
-    LEFT JOIN m_workout_exercise we ON ws.session_id = we.session_id
-    WHERE ws.user_id = ? AND ws.workout_date = ?
-    GROUP BY ws.session_id
-    ORDER BY ws.session_id DESC
-');
-$stmt->execute([$user['id'], $date]);
-$workoutSessions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// 페이지 로드 시 시작시간 자동 저장 (단일 세션 모드에서만)
+if ($sessionIdParam) {
+    // 시작시간이 없으면 현재 시간으로 저장
+    $stmt = $pdo->prepare("UPDATE m_workout_session SET start_time = NOW() WHERE session_id = ? AND user_id = ? AND start_time IS NULL");
+    $stmt->execute([$sessionIdParam, $user['id']]);
+}
+
+if ($sessionIdParam) {
+    // 단일 세션 로드
+    $stmt = $pdo->prepare('SELECT * FROM m_workout_session WHERE session_id = ? AND user_id = ?');
+    $stmt->execute([$sessionIdParam, $user['id']]);
+    $sessionRow = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($sessionRow) {
+        // exercise_count, total_volume 보강
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM m_workout_exercise WHERE session_id = ?');
+        $stmt->execute([$sessionRow['session_id']]);
+        $exerciseCount = (int)$stmt->fetchColumn();
+
+        $stmt = $pdo->prepare('SELECT COALESCE(SUM(weight * reps * sets),0) FROM m_workout_exercise WHERE session_id = ?');
+        $stmt->execute([$sessionRow['session_id']]);
+        $totalVolume = (float)$stmt->fetchColumn();
+
+        $sessionRow['exercise_count'] = $exerciseCount;
+        $sessionRow['total_volume'] = $totalVolume;
+        $workoutSessions = [$sessionRow];
+        // 단건 모드에서는 $date를 세션 날짜로 동기화
+        $date = $sessionRow['workout_date'];
+    } else {
+        $workoutSessions = [];
+    }
+} else {
+    // 해당 날짜의 모든 운동 세션 가져오기 (회차별로)
+    $stmt = $pdo->prepare('
+        SELECT ws.*, 
+               COUNT(we.wx_id) as exercise_count,
+               SUM(we.weight * we.reps * we.sets) as total_volume
+        FROM m_workout_session ws
+        LEFT JOIN m_workout_exercise we ON ws.session_id = we.session_id
+        WHERE ws.user_id = ? AND ws.workout_date = ?
+        GROUP BY ws.session_id
+        ORDER BY ws.session_id DESC
+    ');
+    $stmt->execute([$user['id'], $date]);
+    $workoutSessions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
 
 // 전체 운동 데이터 수집 (모든 회차 합계)
-$listOnly = true; // 목록 전용 모드 (세션 상세는 다른 페이지에서 표시)
 $allExercises = [];
 $totalDayVolume = 0;
 $allMuscleAnalysis = [];
@@ -197,154 +290,6 @@ foreach ($allMuscleAnalysis as $muscleCode => &$data) {
 
 // 퍼센트 기준으로 정렬
 uasort($allMuscleAnalysis, function($a, $b) {
-    return $b['percentage'] <=> $a['percentage'];
-});
-
-// 수행률 분석을 위한 변수들 초기화 (목록 모드에서도 필요)
-$performanceByMuscle = [];
-$performanceByBodyPart = [];
-$workoutPerformanceAnalysis = [
-    'total_exercises' => 0,
-    'completed_exercises' => 0,
-    'total_sets' => 0,
-    'completed_sets' => 0,
-    'total_volume' => 0,
-    'completed_volume' => 0,
-    'total_time' => 0,
-    'average_set_time' => 0,
-    'completion_rate' => 0
-];
-
-// 수행된 운동 데이터 수집
-foreach ($workoutSessions as $session) {
-    $stmt = $pdo->prepare('
-        SELECT we.*, 
-               COALESCE(e.name_kr, te.exercise_name) as name_kr,
-               e.name_en, 
-               e.equipment,
-               we.is_temp,
-               te.exercise_name as temp_exercise_name
-        FROM m_workout_exercise we
-        LEFT JOIN m_exercise e ON we.ex_id = e.ex_id
-        LEFT JOIN m_temp_exercise te ON we.temp_ex_id = te.temp_ex_id
-        WHERE we.session_id = ?
-        ORDER BY we.order_no ASC
-    ');
-    $stmt->execute([$session['session_id']]);
-    $exercises = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // 각 운동의 완료 상태 확인
-    foreach ($exercises as &$exercise) {
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*) as completed_sets, MAX(set_no) as max_set_no
-            FROM m_workout_set 
-            WHERE wx_id = ?
-        ");
-        $stmt->execute([$exercise['wx_id']]);
-        $completion = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        $exercise['completed_sets'] = $completion['completed_sets'] ?? 0;
-        $exercise['is_completed'] = ($exercise['completed_sets'] >= $exercise['sets']);
-    }
-    
-    foreach ($exercises as $exercise) {
-        $exerciseVolume = $exercise['weight'] * $exercise['reps'] * $exercise['sets'];
-        $completedVolume = $exercise['weight'] * $exercise['reps'] * $exercise['completed_sets'];
-        
-        $workoutPerformanceAnalysis['total_exercises']++;
-        $workoutPerformanceAnalysis['total_sets'] += $exercise['sets'];
-        $workoutPerformanceAnalysis['total_volume'] += $exerciseVolume;
-        
-        if ($exercise['is_completed']) {
-            $workoutPerformanceAnalysis['completed_exercises']++;
-            $workoutPerformanceAnalysis['completed_sets'] += $exercise['completed_sets'];
-            $workoutPerformanceAnalysis['completed_volume'] += $completedVolume;
-        }
-        
-        // 해당 운동의 근육 타겟 정보 가져오기 (수행된 운동만)
-        if ($exercise['is_completed'] && $exercise['ex_id']) {
-            $stmt = $pdo->prepare('
-                SELECT emt.*, m.name_kr as muscle_name, m.name_en as muscle_name_en, bp.part_name_kr
-                FROM m_exercise_muscle_target emt
-                JOIN m_muscle m ON emt.muscle_code = m.muscle_code
-                JOIN m_body_part bp ON m.part_code = bp.part_code
-                WHERE emt.ex_id = ?
-                ORDER BY emt.priority ASC, emt.weight DESC
-            ');
-            $stmt->execute([$exercise['ex_id']]);
-            $muscleTargets = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // 각 근육별 가중치 계산 (수행 기준)
-            foreach ($muscleTargets as $target) {
-                $muscleCode = $target['muscle_code'];
-                $muscleName = $target['muscle_name'];
-                $partName = $target['part_name_kr'];
-                $weight = $target['weight'];
-                $priority = $target['priority'];
-                
-                // 가중치 적용된 볼륨 계산 (수행된 볼륨 기준)
-                $weightedVolume = $completedVolume * $weight;
-                
-                if (!isset($performanceByMuscle[$muscleCode])) {
-                    $performanceByMuscle[$muscleCode] = [
-                        'muscle_name' => $muscleName,
-                        'part_name' => $partName,
-                        'total_volume' => 0,
-                        'weighted_volume' => 0,
-                        'exercises' => []
-                    ];
-                }
-                
-                $performanceByMuscle[$muscleCode]['total_volume'] += $completedVolume;
-                $performanceByMuscle[$muscleCode]['weighted_volume'] += $weightedVolume;
-                $performanceByMuscle[$muscleCode]['exercises'][] = [
-                    'exercise_name' => $exercise['name_kr'],
-                    'volume' => $completedVolume,
-                    'weight' => $weight,
-                    'priority' => $priority,
-                    'weighted_volume' => $weightedVolume
-                ];
-                
-                // 부위별 데이터도 수집
-                $partCode = $target['part_code'] ?? null;
-                if ($partCode) {
-                    if (!isset($performanceByBodyPart[$partCode])) {
-                        $performanceByBodyPart[$partCode] = [
-                            'part_name' => $partName,
-                            'total_volume' => 0,
-                            'weighted_volume' => 0,
-                            'exercises' => []
-                        ];
-                    }
-                    
-                    $performanceByBodyPart[$partCode]['total_volume'] += $completedVolume;
-                    $performanceByBodyPart[$partCode]['weighted_volume'] += $weightedVolume;
-                }
-            }
-        }
-    }
-}
-
-// 수행된 운동의 퍼센트 계산
-$totalPerformedWeightedVolume = 0;
-foreach ($performanceByMuscle as $muscleCode => &$data) {
-    $totalPerformedWeightedVolume += $data['weighted_volume'];
-}
-
-foreach ($performanceByMuscle as $muscleCode => &$data) {
-    $data['percentage'] = $totalPerformedWeightedVolume > 0 ? round(($data['weighted_volume'] / $totalPerformedWeightedVolume) * 100, 1) : 0;
-}
-
-foreach ($performanceByBodyPart as $partCode => &$data) {
-    $data['percentage'] = $totalPerformedWeightedVolume > 0 ? round(($data['weighted_volume'] / $totalPerformedWeightedVolume) * 100, 1) : 0;
-}
-
-// 수행률 기준으로 정렬
-uasort($performanceByMuscle, function($a, $b) {
-    return $b['percentage'] <=> $a['percentage'];
-});
-
-uasort($performanceByBodyPart, function($a, $b) {
     return $b['percentage'] <=> $a['percentage'];
 });
 
@@ -607,379 +552,21 @@ include 'header.php';
 </div>
 
 
-
-<?php if (!empty($workoutSessions)): ?>
-    <!-- 오늘 날짜 세션 목록만 표시 (최신이 위로, 회차는 4,3,2,1) -->
-    <?php 
-    $totalSessions = count($workoutSessions);
-    foreach ($workoutSessions as $idx => $session): 
-        $roundNumber = $totalSessions - $idx;
-    ?>
-        <div class="card mb-2">
-            <div class="card-body d-flex justify-content-between align-items-center">
-                <a href="my_workouts_ing.php?session_id=<?= $session['session_id'] ?>" class="text-decoration-none text-dark flex-grow-1">
-                    <div>
-                        <strong><?= $roundNumber ?>회차</strong>
-                        <span class="text-muted ms-2">운동 수: <?= (int)$session['exercise_count'] ?></span>
-                    </div>
-                </a>
-                <div class="btn-group btn-group-sm ms-3">
-                    <a href="today.php?edit_session=<?= $session['session_id'] ?>" 
-                       class="btn btn-outline-primary btn-sm">
-                        <i class="fas fa-edit"></i> 수정
-                    </a>
-                    <button type="button" class="btn btn-outline-danger btn-sm" 
-                            onclick="deleteSession(<?= $session['session_id'] ?>)">
-                        <i class="fas fa-trash"></i> 삭제
-                    </button>
-                </div>
-            </div>
-        </div>
-    <?php endforeach; ?>
-<?php else: ?>
-    <div class="alert alert-info">
-        해당 날짜에 운동 세션이 없습니다.
-    </div>
-<?php endif; ?>
-
-<!-- 전체 운동 분석 -->
-<?php if (!empty($allMuscleAnalysis)): ?>
-    <div class="card mb-3">
-        <div class="card-header">
-            <h5 class="text-primary mb-0">
-                <i class="fas fa-chart-line"></i> 전체 운동 분석
-            </h5>
-            <div class="mt-2">
-                <small class="text-muted">
-                    총 볼륨: <?= number_format($totalDayVolume) ?>kg | 
-                    가중치 볼륨: <?= number_format($totalWeightedVolume) ?>kg
-                </small>
-            </div>
-        </div>
-        <div class="card-body">
-            <!-- 운동 수행률 요약 (계획 vs 수행) -->
-            <div class="muscle-summary-section">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="text-info mb-0">
-                        <i class="fas fa-chart-bar"></i> 운동 수행률 요약
-                    </h6>
-                    <!-- 범례 -->
-                    <div>
-                        <span class="badge bg-success me-2">수행률</span>
-                        <span class="badge bg-info">계획률</span>
-                    </div>
-                </div>
-                
-                <?php
-                // 계획된 운동 부위별 데이터
-                $plannedParts = [];
-                foreach ($allMuscleAnalysis as $muscleCode => $muscleData) {
-                    if ($muscleData['percentage'] > 0) {
-                        $partName = $muscleData['part_name'];
-                        if (!isset($plannedParts[$partName])) {
-                            $plannedParts[$partName] = 0;
-                        }
-                        $plannedParts[$partName] += $muscleData['percentage'];
-                    }
-                }
-                
-                // 수행된 운동 부위별 데이터
-                $performedParts = [];
-                foreach ($performanceByBodyPart as $partCode => $partData) {
-                    if ($partData['percentage'] > 0) {
-                        $partName = $partData['part_name'];
-                        $performedParts[$partName] = $partData['percentage'];
-                    }
-                }
-                
-                // 모든 부위 통합 (계획 + 수행)
-                $allParts = array_unique(array_keys($plannedParts));
-                
-                // 퍼센트 기준으로 정렬 (계획 기준)
-                uasort($allParts, function($a, $b) use ($plannedParts) {
-                    $aPercent = $plannedParts[$a] ?? 0;
-                    $bPercent = $plannedParts[$b] ?? 0;
-                    return $bPercent <=> $aPercent;
-                });
-                
-                // 1, 2등과 기타 분리
-                $topParts = array_slice($allParts, 0, 2, true);
-                $otherParts = array_slice($allParts, 2, null, true);
-                ?>
-                
-            <div class="row">
-                    <!-- 1, 2등 부위 -->
-                    <?php foreach ($topParts as $partName): ?>
-                        <?php 
-                        $plannedPercent = $plannedParts[$partName] ?? 0;
-                        $performedPercent = $performedParts[$partName] ?? 0;
-                        ?>
-                        <div class="col-md-6 mb-3">
-                            <div class="part-summary-item">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <strong><?= htmlspecialchars($partName) ?></strong>
-                                        <?php if ($performedPercent > 0): ?>
-                                            <span class="badge bg-success ms-2"><?= round($performedPercent, 1) ?>%</span>
-                                        <?php endif; ?>
-                                        <span class="badge bg-info ms-1"><?= round($plannedPercent, 1) ?>%</span>
-                                    </div>
-                                </div>
-                                <div class="progress mt-2" style="height: 12px; background-color: #e9ecef; position: relative;">
-                                    <!-- 100% 회색 배경 -->
-                                    <!-- 계획된 부분 (파란색) -->
-                                    <div style="position: absolute; top: 0; left: 0; height: 100%; width: <?= $plannedPercent ?>%; background-color: #0dcaf0; border-radius: 0.375rem;"></div>
-                                    <!-- 수행된 부분 (녹색) - 계획된 부분 위에 중첩 -->
-                                    <?php if ($performedPercent > 0): ?>
-                                        <div style="position: absolute; top: 0; left: 0; height: 100%; width: <?= $performedPercent ?>%; background-color: #198754; border-radius: 0.375rem;"></div>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                    
-                    <!-- 기타 부위들 -->
-                    <?php if (!empty($otherParts)): ?>
-                        <?php 
-                        $otherPlannedTotal = 0;
-                        $otherPerformedTotal = 0;
-                        foreach ($otherParts as $partName) {
-                            $otherPlannedTotal += $plannedParts[$partName] ?? 0;
-                            $otherPerformedTotal += $performedParts[$partName] ?? 0;
-                        }
-                        ?>
-                        <div class="col-md-6 mb-3">
-                            <div class="part-summary-item">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <strong>기타</strong>
-                                        <?php if ($otherPerformedTotal > 0): ?>
-                                            <span class="badge bg-success ms-2"><?= round($otherPerformedTotal, 1) ?>%</span>
-                                        <?php endif; ?>
-                                        <span class="badge bg-info ms-1"><?= round($otherPlannedTotal, 1) ?>%</span>
-                                    </div>
-                                </div>
-                                <div class="progress mt-2" style="height: 12px; background-color: #e9ecef; position: relative;">
-                                    <!-- 100% 회색 배경 -->
-                                    <!-- 계획된 부분 (파란색) -->
-                                    <div style="position: absolute; top: 0; left: 0; height: 100%; width: <?= $otherPlannedTotal ?>%; background-color: #0dcaf0; border-radius: 0.375rem;"></div>
-                                    <!-- 수행된 부분 (녹색) - 계획된 부분 위에 중첩 -->
-                                    <?php if ($otherPerformedTotal > 0): ?>
-                                        <div style="position: absolute; top: 0; left: 0; height: 100%; width: <?= $otherPerformedTotal ?>%; background-color: #198754; border-radius: 0.375rem;"></div>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-            
-            <!-- 부위별 수행률 요약 (각 부위 100% 기준) -->
-            <div class="muscle-summary-section">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="text-info mb-0">
-                        <i class="fas fa-chart-bar"></i> 부위별 수행률 요약
-                    </h6>
-                    <!-- 범례 -->
-                    <div>
-                        <span class="badge bg-success me-2">수행률</span>
-                        <span class="badge bg-info">계획률</span>
-                    </div>
-                </div>
-                
-                <?php
-                // 각 부위별로 100% 기준으로 계산
-                $partSummary100 = [];
-                foreach ($allParts as $partName) {
-                    $plannedPercent = $plannedParts[$partName] ?? 0;
-                    $performedPercent = $performedParts[$partName] ?? 0;
-                    
-                    if ($plannedPercent > 0) {
-                        // 각 부위를 100%로 정규화
-                        $partSummary100[$partName] = [
-                            'planned' => 100, // 항상 100%
-                            'performed' => $plannedPercent > 0 ? round(($performedPercent / $plannedPercent) * 100, 1) : 0
-                        ];
-                    }
-                }
-                
-                // 퍼센트 기준으로 정렬 (계획 기준)
-                uasort($partSummary100, function($a, $b) use ($plannedParts, $partSummary100) {
-                    $aKey = array_search($a, $partSummary100);
-                    $bKey = array_search($b, $partSummary100);
-                    $aPercent = $plannedParts[$aKey] ?? 0;
-                    $bPercent = $plannedParts[$bKey] ?? 0;
-                    return $bPercent <=> $aPercent;
-                });
-                
-                // 1, 2등과 기타 분리
-                $topParts100 = array_slice($partSummary100, 0, 2, true);
-                $otherParts100 = array_slice($partSummary100, 2, null, true);
-                ?>
-                
-                <div class="row">
-                    <!-- 1, 2등 부위 -->
-                    <?php foreach ($topParts100 as $partName => $data): ?>
-                        <div class="col-md-6 mb-3">
-                            <div class="part-summary-item">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <strong><?= htmlspecialchars($partName) ?></strong>
-                                        <?php if ($data['performed'] > 0): ?>
-                                            <span class="badge bg-success ms-2"><?= $data['performed'] ?>%</span>
-                                        <?php endif; ?>
-                                        <span class="badge bg-info ms-1"><?= $data['planned'] ?>%</span>
-                                    </div>
-                                </div>
-                                <div class="progress mt-2" style="height: 12px; background-color: #e9ecef; position: relative;">
-                                    <!-- 100% 회색 배경 -->
-                                    <!-- 계획된 부분 (파란색) - 항상 100% -->
-                                    <div style="position: absolute; top: 0; left: 0; height: 100%; width: 100%; background-color: #0dcaf0; border-radius: 0.375rem;"></div>
-                                    <!-- 수행된 부분 (녹색) - 계획된 부분 위에 중첩 -->
-                                    <?php if ($data['performed'] > 0): ?>
-                                        <div style="position: absolute; top: 0; left: 0; height: 100%; width: <?= $data['performed'] ?>%; background-color: #198754; border-radius: 0.375rem;"></div>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                    
-                    <!-- 기타 부위들 -->
-                    <?php if (!empty($otherParts100)): ?>
-                        <?php 
-                        $otherPlannedTotal100 = 0;
-                        $otherPerformedTotal100 = 0;
-                        foreach ($otherParts100 as $partName => $data) {
-                            $otherPlannedTotal100 += $data['planned'];
-                            $otherPerformedTotal100 += $data['performed'];
-                        }
-                        $otherCount = count($otherParts100);
-                        $otherPlannedAvg = $otherCount > 0 ? $otherPlannedTotal100 / $otherCount : 0;
-                        $otherPerformedAvg = $otherCount > 0 ? $otherPerformedTotal100 / $otherCount : 0;
-                        ?>
-                        <div class="col-md-6 mb-3">
-                            <div class="part-summary-item">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <strong>기타</strong>
-                                        <?php if ($otherPerformedAvg > 0): ?>
-                                            <span class="badge bg-success ms-2"><?= round($otherPerformedAvg, 1) ?>%</span>
-                                        <?php endif; ?>
-                                        <span class="badge bg-info ms-1"><?= round($otherPlannedAvg, 1) ?>%</span>
-                                    </div>
-                                </div>
-                                <div class="progress mt-2" style="height: 12px; background-color: #e9ecef; position: relative;">
-                                    <!-- 100% 회색 배경 -->
-                                    <!-- 계획된 부분 (파란색) - 항상 100% -->
-                                    <div style="position: absolute; top: 0; left: 0; height: 100%; width: 100%; background-color: #0dcaf0; border-radius: 0.375rem;"></div>
-                                    <!-- 수행된 부분 (녹색) - 계획된 부분 위에 중첩 -->
-                                    <?php if ($otherPerformedAvg > 0): ?>
-                                        <div style="position: absolute; top: 0; left: 0; height: 100%; width: <?= $otherPerformedAvg ?>%; background-color: #198754; border-radius: 0.375rem;"></div>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-            
-            <!-- 근육 사용률 분석 (상세) -->
-            <div class="muscle-analysis-section">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="text-primary mb-0">
-                        <i class="fas fa-chart-pie"></i> 근육 사용률 분석 (상세)
-                    </h6>
-                    <!-- 범례 -->
-                    <div>
-                        <span class="badge bg-success me-2">수행률</span>
-                        <span class="badge bg-info">계획률</span>
-                    </div>
-                </div>
-                
-                <div class="muscle-analysis">
-                    <?php 
-                    // 근육별 수행 데이터 수집
-                    $musclePerformance = [];
-                    foreach ($performanceByMuscle as $muscleCode => $muscleData) {
-                        if ($muscleData['percentage'] > 0) {
-                            $musclePerformance[$muscleCode] = $muscleData['percentage'];
-                        }
-                    }
-                    
-                    // 계획된 근육 데이터와 수행된 근육 데이터 통합
-                    $allMuscleCodes = array_unique(array_merge(array_keys($allMuscleAnalysis), array_keys($musclePerformance)));
-                    
-                    // 퍼센트 기준으로 정렬 (계획 기준)
-                    uasort($allMuscleCodes, function($a, $b) use ($allMuscleAnalysis) {
-                        $aPercent = $allMuscleAnalysis[$a]['percentage'] ?? 0;
-                        $bPercent = $allMuscleAnalysis[$b]['percentage'] ?? 0;
-                        return $bPercent <=> $aPercent;
-                    });
-                    ?>
-                    
-                    <?php foreach ($allMuscleCodes as $muscleCode): ?>
-                        <?php 
-                        $muscleData = $allMuscleAnalysis[$muscleCode] ?? null;
-                        $plannedPercent = $muscleData['percentage'] ?? 0;
-                        $performedPercent = $musclePerformance[$muscleCode] ?? 0;
-                        
-                        if ($plannedPercent > 0): 
-                        ?>
-                            <div class="muscle-item mb-2">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <strong><?= htmlspecialchars($muscleData['muscle_name']) ?></strong>
-                                        <small class="text-muted">(<?= htmlspecialchars($muscleData['part_name']) ?>)</small>
-                                    </div>
-                                    <div class="text-end">
-                                        <?php if ($performedPercent > 0): ?>
-                                            <span class="badge bg-success me-1"><?= round($performedPercent, 1) ?>%</span>
-                                        <?php endif; ?>
-                                        <span class="badge bg-info"><?= round($plannedPercent, 1) ?>%</span>
-                                        <br>
-                                        <small class="text-muted"><?= number_format($muscleData['weighted_volume']) ?>kg</small>
-                                    </div>
-                                </div>
-                                <div class="progress mt-1" style="height: 8px; background-color: #e9ecef; position: relative;">
-                                    <!-- 100% 회색 배경 -->
-                                    <!-- 계획된 부분 (파란색) -->
-                                    <div style="position: absolute; top: 0; left: 0; height: 100%; width: <?= $plannedPercent ?>%; background-color: #0dcaf0; border-radius: 0.375rem;"></div>
-                                    <!-- 수행된 부분 (녹색) - 계획된 부분 위에 중첩 -->
-                                    <?php if ($performedPercent > 0): ?>
-                                        <div style="position: absolute; top: 0; left: 0; height: 100%; width: <?= $performedPercent ?>%; background-color: #198754; border-radius: 0.375rem;"></div>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-        </div>
-    </div>
-<?php endif; ?>
-
-<!-- 운동 추가 버튼 -->
-<div class="text-center mt-4">
-    <a href="today.php?date=<?= $date ?>" class="btn btn-primary btn-lg">
-        <i class="fas fa-plus"></i> 이 날에 운동 추가하기
-    </a>
-</div>
-
-
-<?php if (!$listOnly && !empty($sessionsWithExercises)): ?>
+<?php if (!empty($sessionsWithExercises)): ?>
     <!-- 각 세션별 운동 목록 -->
     <?php foreach ($sessionsWithExercises as $sessionData): ?>
     <div class="card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <a href="workout_session.php?session_id=<?= $sessionData['session']['session_id'] ?>" 
-               class="text-decoration-none text-white"
-               style="z-index: 10; position: relative;"
-               onclick="console.log('링크 클릭됨: <?= $sessionData['session']['session_id'] ?>'); return true;">
-                <h5 class="mb-0">
-                    <i class="fas fa-play-circle"></i> <?= $sessionData['round'] ?>
-                </h5>
-            </a>
+            <h5 class="mb-0 text-white">
+                <i class="fas fa-play-circle"></i> <?= $sessionData['round'] ?>
+            </h5>
             <div class="btn-group btn-group-sm">
+                <?php if ($sessionData['session']['start_time'] && !$sessionData['session']['end_time']): ?>
+                    <button type="button" class="btn btn-success btn-sm" 
+                            onclick="endWorkout(<?= $sessionData['session']['session_id'] ?>)">
+                        <i class="fas fa-flag-checkered"></i> 운동 완료
+                    </button>
+                <?php endif; ?>
                 <a href="today.php?edit_session=<?= $sessionData['session']['session_id'] ?>" 
                    class="btn btn-light btn-sm border">
                     <i class="fas fa-edit"></i> 수정
@@ -991,6 +578,33 @@ include 'header.php';
             </div>
         </div>
         <div class="card-body">
+            <!-- 운동 시간 정보 -->
+            <div class="workout-time-edit mb-3">
+                <div class="row">
+                    <div class="col-md-5">
+                        <label class="form-label">시작시간</label>
+                        <input type="time" 
+                               class="form-control form-control-sm" 
+                               id="start_time_<?= $sessionData['session']['session_id'] ?>"
+                               value="<?= $sessionData['session']['start_time'] ? date('H:i', strtotime($sessionData['session']['start_time'])) : '' ?>">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">종료시간</label>
+                        <input type="time" 
+                               class="form-control form-control-sm" 
+                               id="end_time_<?= $sessionData['session']['session_id'] ?>"
+                               value="<?= $sessionData['session']['end_time'] ? date('H:i', strtotime($sessionData['session']['end_time'])) : '' ?>">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="button" 
+                                class="btn btn-primary btn-sm" 
+                                onclick="updateWorkoutTime(<?= $sessionData['session']['session_id'] ?>)">
+                            <i class="fas fa-save"></i> 수정
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
             <!-- 운동 목록 -->
             <div class="mb-4">
                     <?php foreach ($sessionData['exercises'] as $exercise): ?>
@@ -1027,10 +641,10 @@ include 'header.php';
                                     onclick="deleteExercise(<?= $exercise['wx_id'] ?>)">
                                 <i class="fas fa-trash"></i>
                             </button>
-                            </div>
                         </div>
-                    <?php endforeach; ?>
-                </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
         </div>
     </div>
     <?php endforeach; ?>
@@ -1126,10 +740,10 @@ include 'header.php';
                                         <?php if ($performedPercent > 0): ?>
                                             <div style="position: absolute; top: 0; left: 0; height: 100%; width: <?= $performedPercent ?>%; background-color: #198754; border-radius: 0.375rem;"></div>
                                         <?php endif; ?>
-            </div>
-        </div>
-    </div>
-    <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
                         
                         <!-- 기타 부위들 -->
                         <?php if (!empty($otherParts)): ?>
@@ -1352,8 +966,8 @@ include 'header.php';
         </div>
     <?php endif; ?>
 
-<?php elseif (!$listOnly): ?>
-    <!-- 운동 기록 없음 (목록 모드가 아닐 때만) -->
+<?php else: ?>
+    <!-- 운동 기록 없음 -->
     <div class="card">
         <div class="card-body text-center">
             <i class="fas fa-calendar-times fa-3x text-muted"></i>
@@ -1415,6 +1029,88 @@ function deleteExercise(wxId) {
     document.getElementById('deleteSessionId').value = '';
     document.getElementById('deleteWxId').value = wxId;
     new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+
+// 운동 완료
+function endWorkout(sessionId) {
+    if (confirm('운동을 완료하시겠습니까?')) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.innerHTML = `
+            <input type="hidden" name="action" value="end_workout">
+            <input type="hidden" name="session_id" value="${sessionId}">
+        `;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// 운동 시간 수정
+function updateWorkoutTime(sessionId) {
+    const startTime = document.getElementById(`start_time_${sessionId}`).value;
+    const endTime = document.getElementById(`end_time_${sessionId}`).value;
+    
+    if (!startTime && !endTime) {
+        alert('시작시간 또는 종료시간을 입력해주세요.');
+        return;
+    }
+    
+    // 현재 날짜와 시간을 합쳐서 datetime 형식으로 변환
+    const currentDate = new Date().toISOString().split('T')[0];
+    const startDateTime = startTime ? `${currentDate} ${startTime}:00` : null;
+    const endDateTime = endTime ? `${currentDate} ${endTime}:00` : null;
+    
+    // AJAX로 데이터 전송
+    fetch('', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: `action=update_workout_time&session_id=${sessionId}&start_time=${encodeURIComponent(startDateTime || '')}&end_time=${encodeURIComponent(endDateTime || '')}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMessage(data.message, 'success');
+        } else {
+            showMessage(data.message || '수정 중 오류가 발생했습니다.', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showMessage('수정 중 오류가 발생했습니다.', 'error');
+    });
+}
+
+// 메시지 표시 함수
+function showMessage(message, type) {
+    // 기존 메시지 제거
+    const existingAlert = document.querySelector('.alert-message');
+    if (existingAlert) {
+        existingAlert.remove();
+    }
+    
+    // 새 메시지 생성
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show alert-message`;
+    alertDiv.style.position = 'fixed';
+    alertDiv.style.top = '20px';
+    alertDiv.style.right = '20px';
+    alertDiv.style.zIndex = '9999';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alertDiv);
+    
+    // 3초 후 자동 제거
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 3000);
 }
 
 // 부위별 세부 내용 토글
@@ -1761,5 +1457,19 @@ function closeModalWithoutSave() {
 
 .workout-modal * {
     color: white !important;
+}
+
+.workout-time-edit {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    border: 1px solid #dee2e6;
+}
+
+.workout-time-edit .form-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 5px;
 }
 </style>
