@@ -50,12 +50,7 @@ try {
                 $sessionId = $editSessionId;
                 
             } elseif ($editExerciseId) {
-                // 개별 운동 수정
-                // 기존 운동 삭제
-                $stmt = $pdo->prepare('DELETE FROM m_workout_exercise WHERE wx_id = ?');
-                $stmt->execute([$editExerciseId]);
-                
-                // 세션 ID 가져오기
+                // 개별 운동 수정 - 삭제하지 않고 업데이트
                 $stmt = $pdo->prepare('SELECT session_id FROM m_workout_exercise WHERE wx_id = ?');
                 $stmt->execute([$editExerciseId]);
                 $sessionId = $stmt->fetchColumn();
@@ -87,9 +82,10 @@ try {
         }
 
         // 운동 기록 저장 (순서대로)
-        foreach ($workouts as $workout) {
+        if ($editMode && $editExerciseId) {
+            // 개별 운동 수정 - UPDATE
+            $workout = $workouts[0]; // 첫 번째 운동만 사용
             $isTemp = isset($workout['is_temp']) && $workout['is_temp'];
-            $orderNo = isset($workout['order_no']) ? $workout['order_no'] : 1;
             
             if ($isTemp) {
                 // 임시 운동인 경우
@@ -105,42 +101,98 @@ try {
                     $tempExId = $pdo->lastInsertId();
                 }
                 
-                // 2. 운동 계획에 임시 운동으로 저장
+                // 2. 기존 운동 업데이트
                 $stmt = $pdo->prepare('
-                    INSERT INTO m_workout_exercise 
-                    (session_id, ex_id, order_no, weight, reps, sets, original_exercise_name, temp_ex_id, is_temp) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    UPDATE m_workout_exercise 
+                    SET ex_id = ?, weight = ?, reps = ?, sets = ?, original_exercise_name = ?, temp_ex_id = ?, is_temp = ?
+                    WHERE wx_id = ?
                 ');
                 
                 $stmt->execute([
-                    $sessionId,
                     null, // ex_id는 null
-                    $orderNo,
                     $workout['weight'],
                     $workout['reps'],
                     $workout['sets'],
                     $workout['exercise_name'],
                     $tempExId,
-                    1 // is_temp = 1
+                    1, // is_temp = 1
+                    $editExerciseId
                 ]);
             } else {
                 // 정식 운동인 경우
                 $stmt = $pdo->prepare('
-                    INSERT INTO m_workout_exercise 
-                    (session_id, ex_id, order_no, weight, reps, sets, original_exercise_name, is_temp) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    UPDATE m_workout_exercise 
+                    SET ex_id = ?, weight = ?, reps = ?, sets = ?, original_exercise_name = ?, is_temp = ?
+                    WHERE wx_id = ?
                 ');
                 
                 $stmt->execute([
-                    $sessionId,
                     $workout['exercise_id'],
-                    $orderNo,
                     $workout['weight'],
                     $workout['reps'],
                     $workout['sets'],
                     $workout['exercise_name'],
-                    0 // is_temp = 0
+                    0, // is_temp = 0
+                    $editExerciseId
                 ]);
+            }
+        } else {
+            // 새로 생성 또는 세션 수정 - INSERT
+            foreach ($workouts as $workout) {
+                $isTemp = isset($workout['is_temp']) && $workout['is_temp'];
+                $orderNo = isset($workout['order_no']) ? $workout['order_no'] : 1;
+                
+                if ($isTemp) {
+                    // 임시 운동인 경우
+                    // 1. 임시 운동 마스터에 저장 (중복 체크)
+                    $stmt = $pdo->prepare('SELECT temp_ex_id FROM m_temp_exercise WHERE user_id = ? AND exercise_name = ?');
+                    $stmt->execute([$user['id'], $workout['exercise_name']]);
+                    $tempExId = $stmt->fetchColumn();
+                    
+                    if (!$tempExId) {
+                        // 존재하지 않으면 새로 생성
+                        $stmt = $pdo->prepare('INSERT INTO m_temp_exercise (user_id, exercise_name, status) VALUES (?, ?, ?)');
+                        $stmt->execute([$user['id'], $workout['exercise_name'], 'pending']);
+                        $tempExId = $pdo->lastInsertId();
+                    }
+                    
+                    // 2. 운동 계획에 임시 운동으로 저장
+                    $stmt = $pdo->prepare('
+                        INSERT INTO m_workout_exercise 
+                        (session_id, ex_id, order_no, weight, reps, sets, original_exercise_name, temp_ex_id, is_temp) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ');
+                    
+                    $stmt->execute([
+                        $sessionId,
+                        null, // ex_id는 null
+                        $orderNo,
+                        $workout['weight'],
+                        $workout['reps'],
+                        $workout['sets'],
+                        $workout['exercise_name'],
+                        $tempExId,
+                        1 // is_temp = 1
+                    ]);
+                } else {
+                    // 정식 운동인 경우
+                    $stmt = $pdo->prepare('
+                        INSERT INTO m_workout_exercise 
+                        (session_id, ex_id, order_no, weight, reps, sets, original_exercise_name, is_temp) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ');
+                    
+                    $stmt->execute([
+                        $sessionId,
+                        $workout['exercise_id'],
+                        $orderNo,
+                        $workout['weight'],
+                        $workout['reps'],
+                        $workout['sets'],
+                        $workout['exercise_name'],
+                        0 // is_temp = 0
+                    ]);
+                }
             }
         }
 
@@ -151,11 +203,20 @@ try {
         $stmt->execute([$sessionId]);
         $workoutDate = $stmt->fetchColumn();
         
+        // 리다이렉트 URL 결정
+        if ($editMode && $editExerciseId) {
+            // 개별 운동 수정 시 해당 세션 상세 페이지로
+            $redirectUrl = 'my_workouts_ing.php?session_id=' . $sessionId;
+        } else {
+            // 세션 수정 또는 새로 생성 시 일별 운동 목록으로
+            $redirectUrl = 'my_workouts.php?date=' . $workoutDate;
+        }
+        
         echo json_encode([
             'success' => true,
             'message' => $editMode ? '운동이 성공적으로 수정되었습니다.' : '운동이 성공적으로 기록되었습니다.',
             'session_id' => $sessionId,
-            'redirect_url' => 'my_workouts.php?date=' . $workoutDate
+            'redirect_url' => $redirectUrl
         ]);
 
     } catch (Exception $e) {

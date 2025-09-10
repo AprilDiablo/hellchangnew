@@ -355,14 +355,22 @@ include 'header.php';
                 ><?php 
                     if (isset($_POST['workout_plan'])) {
                         echo htmlspecialchars($_POST['workout_plan']);
+                    } elseif ($editMode && isset($editExerciseId) && !empty($existingWorkouts)) {
+                        // 개별 운동 수정 모드일 때
+                        $workout = $existingWorkouts[0]; // 첫 번째 운동만 사용
+                        $weight = $workout['weight'] ?: 0;
+                        $reps = $workout['reps'] ?: 0;
+                        $sets = $workout['sets'] ?: 0;
+                        $workoutText = $workout['name_kr'] . ' ' . number_format($weight, 0) . ' ' . $reps . ' ' . $sets;
+                        echo htmlspecialchars($workoutText);
                     } elseif ($editMode && !empty($existingWorkouts)) {
-                        // 수정 모드일 때 기존 데이터를 텍스트로 변환
+                        // 세션 수정 모드일 때 기존 데이터를 텍스트로 변환
                         $workoutText = '';
                         foreach ($existingWorkouts as $workout) {
                             $weight = $workout['weight'] ?: 0;
                             $reps = $workout['reps'] ?: 0;
                             $sets = $workout['sets'] ?: 0;
-                            $workoutText .= $workout['name_kr'] . ' ' . $weight . ' ' . $reps . ' ' . $sets . "\n";
+                            $workoutText .= $workout['name_kr'] . ' ' . number_format($weight, 0) . ' ' . $reps . ' ' . $sets . "\n";
                         }
                         echo htmlspecialchars(trim($workoutText));
                     }

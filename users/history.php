@@ -21,27 +21,38 @@ $currentDate = new DateTime($selectedMonth . '-01');
 $prevMonth = (clone $currentDate)->modify('-1 month')->format('Y-m');
 $nextMonth = (clone $currentDate)->modify('+1 month')->format('Y-m');
 
-// 전체 운동 데이터 수집 (선택된 달)
+// 전체 운동 데이터 수집 (선택된 달) - 실제 수행한 운동만
 $pdo = getDB();
 $currentMonth = $selectedMonth;
+
+// 실제 수행한 운동 데이터 수집 (m_workout_set 테이블 기준)
 $stmt = $pdo->prepare('
-    SELECT we.*, 
-           COALESCE(e.name_kr, te.exercise_name) as name_kr,
-           e.name_en, 
-           e.equipment,
-           we.is_temp,
-           te.exercise_name as temp_exercise_name
+    SELECT 
+        we.wx_id,
+        we.weight,
+        we.reps,
+        we.sets,
+        we.ex_id,
+        we.is_temp,
+        COALESCE(e.name_kr, te.exercise_name) as name_kr,
+        e.name_en, 
+        e.equipment,
+        te.exercise_name as temp_exercise_name,
+        COUNT(ws.set_id) as completed_sets
     FROM m_workout_exercise we
     LEFT JOIN m_exercise e ON we.ex_id = e.ex_id
     LEFT JOIN m_temp_exercise te ON we.temp_ex_id = te.temp_ex_id
-    JOIN m_workout_session ws ON we.session_id = ws.session_id
-    WHERE ws.user_id = ? AND DATE_FORMAT(ws.workout_date, "%Y-%m") = ?
+    JOIN m_workout_session wss ON we.session_id = wss.session_id
+    LEFT JOIN m_workout_set ws ON we.wx_id = ws.wx_id
+    WHERE wss.user_id = ? AND DATE_FORMAT(wss.workout_date, "%Y-%m") = ?
+    GROUP BY we.wx_id, we.weight, we.reps, we.sets, we.ex_id, we.is_temp, e.name_kr, e.name_en, e.equipment, te.exercise_name
+    HAVING completed_sets > 0
     ORDER BY we.order_no ASC
 ');
 $stmt->execute([$user['id'], $currentMonth]);
 $allExercises = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// 부위별 분석 데이터 수집
+// 부위별 분석 데이터 수집 (실제 수행 기준)
 $bodyPartAnalysis = [
     '가슴' => 0,
     '어깨' => 0,
@@ -53,7 +64,8 @@ $bodyPartAnalysis = [
 $totalVolume = 0;
 
 foreach ($allExercises as $exercise) {
-    $exerciseVolume = $exercise['weight'] * $exercise['reps'] * $exercise['sets'];
+    // 실제 수행한 세트 수만큼만 계산
+    $exerciseVolume = $exercise['weight'] * $exercise['reps'] * $exercise['completed_sets'];
     $totalVolume += $exerciseVolume;
     
     // 해당 운동의 근육 타겟 정보 가져오기
@@ -69,17 +81,21 @@ foreach ($allExercises as $exercise) {
         $stmt->execute([$exercise['ex_id']]);
         $muscleTargets = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        // 각 근육별 가중치 계산
-        foreach ($muscleTargets as $target) {
-            $partName = $target['part_name_kr'];
-            $weight = $target['weight'];
-            
-            // 가중치 적용된 볼륨 계산
-            $weightedVolume = $exerciseVolume * $weight;
-            
-            // 부위별로 분류
-            if (isset($bodyPartAnalysis[$partName])) {
-                $bodyPartAnalysis[$partName] += $weightedVolume;
+        // 각 근육별 가중치 계산 (중복 계산 방지를 위해 정규화)
+        $totalWeight = array_sum(array_column($muscleTargets, 'weight'));
+        if ($totalWeight > 0) {
+            foreach ($muscleTargets as $target) {
+                $partName = $target['part_name_kr'];
+                $weight = $target['weight'];
+                
+                // 가중치를 정규화하여 중복 계산 방지
+                $normalizedWeight = $weight / $totalWeight;
+                $weightedVolume = $exerciseVolume * $normalizedWeight;
+                
+                // 부위별로 분류
+                if (isset($bodyPartAnalysis[$partName])) {
+                    $bodyPartAnalysis[$partName] += $weightedVolume;
+                }
             }
         }
     }
@@ -110,12 +126,19 @@ $stmt->execute([$user['id'], $currentMonth]);
 $dailyWorkouts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 
-// 각 날짜별로 운동 정보 추가 조회
-foreach ($dailyWorkouts as &$day) {
+// workoutDates 배열을 미리 생성 (foreach 루프 전에)
+$workoutDates = [];
+foreach ($dailyWorkouts as $idx => $workoutDay) {
+    $workoutDates[] = $workoutDay['workout_date'];
+}
+
+// 각 날짜별로 운동 정보 추가 조회 (수행률 포함)
+foreach ($dailyWorkouts as $key => $workoutDay) {
     $exerciseStmt = $pdo->prepare('
         SELECT 
             COUNT(we.wx_id) as exercise_count,
             SUM(we.weight * we.reps * we.sets) as daily_volume,
+            SUM(we.sets) as total_planned_sets,
             GROUP_CONCAT(DISTINCT COALESCE(e.name_kr, te.exercise_name) SEPARATOR ",") as exercise_names
         FROM m_workout_session ws
         LEFT JOIN m_workout_exercise we ON ws.session_id = we.session_id
@@ -123,36 +146,57 @@ foreach ($dailyWorkouts as &$day) {
         LEFT JOIN m_temp_exercise te ON we.temp_ex_id = te.temp_ex_id
         WHERE ws.user_id = ? AND ws.workout_date = ?
     ');
-    $exerciseStmt->execute([$user['id'], $day['workout_date']]);
+    $exerciseStmt->execute([$user['id'], $workoutDay['workout_date']]);
     $exerciseData = $exerciseStmt->fetch(PDO::FETCH_ASSOC);
     
-    $day['exercise_count'] = $exerciseData['exercise_count'] ?: 0;
-    $day['daily_volume'] = $exerciseData['daily_volume'] ?: 0;
-    $day['exercise_names'] = $exerciseData['exercise_names'] ?: '';
+    // 실제 수행한 세트 수 조회
+    $completedStmt = $pdo->prepare('
+        SELECT COUNT(ws.set_id) as completed_sets
+        FROM m_workout_session wss
+        LEFT JOIN m_workout_exercise we ON wss.session_id = we.session_id
+        LEFT JOIN m_workout_set ws ON we.wx_id = ws.wx_id
+        WHERE wss.user_id = ? AND wss.workout_date = ?
+    ');
+    $completedStmt->execute([$user['id'], $workoutDay['workout_date']]);
+    $completedData = $completedStmt->fetch(PDO::FETCH_ASSOC);
+    
+    $totalPlannedSets = $exerciseData['total_planned_sets'] ?: 0;
+    $completedSets = $completedData['completed_sets'] ?: 0;
+    $completionRate = $totalPlannedSets > 0 ? round(($completedSets / $totalPlannedSets) * 100, 1) : 0;
+    
+    $dailyWorkouts[$key]['exercise_count'] = $exerciseData['exercise_count'] ?: 0;
+    $dailyWorkouts[$key]['daily_volume'] = $exerciseData['daily_volume'] ?: 0;
+    $dailyWorkouts[$key]['exercise_names'] = $exerciseData['exercise_names'] ?: '';
+    $dailyWorkouts[$key]['total_planned_sets'] = $totalPlannedSets;
+    $dailyWorkouts[$key]['completed_sets'] = $completedSets;
+    $dailyWorkouts[$key]['completion_rate'] = $completionRate;
 }
 
 
 // 실제 운동시간 계산 (시작시간과 종료시간이 있는 경우)
-foreach ($dailyWorkouts as &$day) {
-    if ($day['first_start_time'] && $day['last_end_time']) {
-        $start = new DateTime($day['first_start_time']);
-        $end = new DateTime($day['last_end_time']);
+foreach ($dailyWorkouts as $key => $workoutDay) {
+    if ($workoutDay['first_start_time'] && $workoutDay['last_end_time']) {
+        $start = new DateTime($workoutDay['first_start_time']);
+        $end = new DateTime($workoutDay['last_end_time']);
         $diff = $start->diff($end);
         $actualDuration = ($diff->h * 60) + $diff->i; // 분 단위로 변환
         
         // 실제 운동시간이 있으면 duration 대신 사용
         if ($actualDuration > 0) {
-            $day['total_duration'] = $actualDuration;
+            $dailyWorkouts[$key]['total_duration'] = $actualDuration;
         }
     }
 }
 
-// 각 날짜별 부위 정보 수집
+
+
+
+// 각 날짜별 부위 정보 수집 (볼륨 기준으로 정렬)
 $dailyBodyParts = [];
-foreach ($dailyWorkouts as $day) {
-    $workoutDate = $day['workout_date'];
+$workoutDates = array_column($dailyWorkouts, 'workout_date');
+foreach ($workoutDates as $workoutDate) {
     $stmt = $pdo->prepare('
-        SELECT DISTINCT bp.part_name_kr
+        SELECT bp.part_name_kr, SUM(we.weight * we.reps * we.sets * emt.weight) as total_volume
         FROM m_workout_exercise we
         LEFT JOIN m_exercise e ON we.ex_id = e.ex_id
         LEFT JOIN m_exercise_muscle_target emt ON e.ex_id = emt.ex_id
@@ -160,20 +204,27 @@ foreach ($dailyWorkouts as $day) {
         LEFT JOIN m_body_part bp ON m.part_code = bp.part_code
         JOIN m_workout_session ws ON we.session_id = ws.session_id
         WHERE ws.user_id = ? AND ws.workout_date = ? AND we.ex_id IS NOT NULL
-        ORDER BY bp.part_name_kr
+        GROUP BY bp.part_name_kr
+        ORDER BY total_volume DESC
     ');
     $stmt->execute([$user['id'], $workoutDate]);
     $bodyParts = $stmt->fetchAll(PDO::FETCH_COLUMN);
     $dailyBodyParts[$workoutDate] = $bodyParts;
 }
 
+
 // 월별 통계 계산
 $monthlyStats = [];
 $totalWorkoutDays = count($dailyWorkouts);
 
+
+
+
+
+
 // 실제 운동시간 사용 (시작시간-종료시간이 있으면 그것을, 없으면 duration, 그것도 없으면 추정값)
 $totalWorkoutTime = 0;
-foreach ($dailyWorkouts as $day) {
+foreach ($dailyWorkouts as $key => $day) {
     if ($day['total_duration'] !== null && $day['total_duration'] > 0) {
         $totalWorkoutTime += $day['total_duration'];
     } else {
@@ -188,7 +239,7 @@ $avgDailyTime = $totalWorkoutDays > 0 ? round($totalWorkoutTime / $totalWorkoutD
 // 이번 달이면 오늘까지의 일수, 다른 달이면 해당 달의 전체 일수
 $today = new DateTime();
 $isCurrentMonth = $selectedMonth === $today->format('Y-m');
-$daysInMonth = $isCurrentMonth ? (int)$today->format('j') : (int)$firstDayOfMonth->format('t');
+$daysInMonth = $isCurrentMonth ? (int)$today->format('j') : (int)$currentDate->format('t');
 
 // 월별로 그룹화
 foreach ($dailyWorkouts as $day) {
@@ -206,6 +257,8 @@ foreach ($dailyWorkouts as $day) {
     $monthlyStats[$month]['sessions'] += $day['session_count'];
     $monthlyStats[$month]['volume'] += $day['daily_volume'];
 }
+
+
 
 include 'header.php';
 ?>
@@ -225,21 +278,16 @@ include 'header.php';
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <h5 class="text-primary mb-0">
-                            <i class="fas fa-calendar-alt"></i> 운동 달력 (<?= $currentDate->format('Y년 m월') ?>)
+                    <div class="d-flex justify-content-center align-items-center">
+                        <a href="?month=<?= $prevMonth ?>" class="btn btn-primary btn-sm text-white me-3">
+                            <i class="fas fa-chevron-left"></i>
+                        </a>
+                        <h5 class="text-primary mb-0 mx-4">
+                            <?= $currentDate->format('Y년 m월') ?>
                         </h5>
-                        <div class="btn-group" role="group">
-                            <a href="?month=<?= $prevMonth ?>" class="btn btn-primary btn-sm text-white">
-                                <i class="fas fa-chevron-left"></i> 이전달
-                            </a>
-                            <a href="?month=<?= date('Y-m') ?>" class="btn btn-secondary btn-sm text-white">
-                                이번달
-                            </a>
-                            <a href="?month=<?= $nextMonth ?>" class="btn btn-primary btn-sm text-white">
-                                다음달 <i class="fas fa-chevron-right"></i>
-                            </a>
-                        </div>
+                        <a href="?month=<?= $nextMonth ?>" class="btn btn-primary btn-sm text-white ms-3">
+                            <i class="fas fa-chevron-right"></i>
+                        </a>
                     </div>
                 </div>
                 <div class="card-body">
@@ -248,7 +296,11 @@ include 'header.php';
                         $today = new DateTime();
                         $firstDayOfMonth = new DateTime($selectedMonth . '-01');
                         $lastDayOfMonth = new DateTime($selectedMonth . '-' . $firstDayOfMonth->format('t'));
-                        $workoutDates = array_column($dailyWorkouts, 'workout_date');
+                        // array_column 대신 수동으로 workout_date 추출
+                        $workoutDates = [];
+                        foreach ($dailyWorkouts as $workoutDay) {
+                            $workoutDates[] = $workoutDay['workout_date'];
+                        }
                         
                         
                         // 이번 달의 모든 날짜 생성
@@ -282,11 +334,12 @@ include 'header.php';
                                             $actualDuration = ($diff->h * 60) + $diff->i; // 분 단위로 변환
                                         }
                                         
+                                        $completionRate = $dayInfo['completion_rate'] ?? 0;
                                         if ($actualDuration !== null && $actualDuration > 0) {
-                                            echo '운동함 - ' . round($actualDuration, 1) . '분';
+                                            echo '운동함 - ' . round($actualDuration, 1) . '분 (수행률: ' . $completionRate . '%)';
                                         } else {
                                             $estimatedDuration = ($dayInfo['exercise_count'] * 3) + (($dayInfo['exercise_count'] - 1) * 1);
-                                            echo '운동함 - ' . round(max($estimatedDuration, 30), 1) . '분 (추정)';
+                                            echo '운동함 - ' . round(max($estimatedDuration, 30), 1) . '분 (수행률: ' . $completionRate . '%)';
                                         }
                                     } else {
                                         echo '운동 안함';
@@ -301,25 +354,25 @@ include 'header.php';
                                             <span class="session-count"><?= $dayInfo['session_count'] ?></span>
                                         <?php endif; ?>
                                     </div>
+                                    
+                                    <!-- 수행률 표시 -->
+                                    <div class="completion-rate" style="font-size: 8px; font-weight: bold; margin-top: 1px; margin-bottom: 2px;">
+                                        <?php 
+                                        $completionRate = $dayInfo['completion_rate'] ?? 0;
+                                        $color = $completionRate >= 100 ? '#ffffff' : ($completionRate >= 80 ? '#fff3cd' : '#f8d7da');
+                                        $bgColor = $completionRate >= 100 ? '#28a745' : ($completionRate >= 80 ? '#ffc107' : '#dc3545');
+                                        ?>
+                                        <span style="color: <?= $color ?>; background-color: <?= $bgColor ?>; padding: 1px 3px; border-radius: 3px; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">
+                                            <?= $completionRate ?>%
+                                        </span>
+                                    </div>
+                                    
                                     <?php if (!empty($dayBodyParts)): ?>
-                                        <div class="body-parts">
+                                        <div class="body-parts" style="font-size: 8px; line-height: 1.2;">
                                             <?php 
-                                            $partIcons = [
-                                                '가슴' => '🫁',
-                                                '어깨' => '💪',
-                                                '등' => '🏋️',
-                                                '팔' => '💪',
-                                                '하체' => '🦵'
-                                            ];
-                                            $displayParts = array_slice($dayBodyParts, 0, 3); // 최대 3개만 표시
-                                            foreach ($displayParts as $part): 
-                                                $icon = $partIcons[$part] ?? '💪';
+                                            $displayParts = array_slice($dayBodyParts, 0, 2); // 최대 2개만 표시
+                                            echo implode(', ', $displayParts);
                                             ?>
-                                                <span class="body-part-icon" title="<?= $part ?>"><?= $icon ?></span>
-                                            <?php endforeach; ?>
-                                            <?php if (count($dayBodyParts) > 3): ?>
-                                                <span class="more-parts">+<?= count($dayBodyParts) - 3 ?></span>
-                                            <?php endif; ?>
                                         </div>
                                     <?php endif; ?>
                                 <?php endif; ?>
@@ -442,60 +495,82 @@ include 'header.php';
             <div class="card">
                 <div class="card-header">
                     <h5 class="text-primary mb-0">
-                        <i class="fas fa-list-alt"></i> 일별 운동 기록
+                        <i class="fas fa-calendar-day"></i> 일별 운동 기록
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead class="table-primary">
-                                <tr>
-                                    <th>날짜</th>
-                                    <th>세션</th>
-                                    <th>운동시간</th>
-                                    <th>운동수</th>
-                                    <th>볼륨</th>
-                                    <th>상세</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($dailyWorkouts as $day): ?>
-                                    <tr>
-                                        <td>
-                                            <strong><?= date('m/d (D)', strtotime($day['workout_date'])) ?></strong>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-primary"><?= $day['session_count'] ?>회</span>
-                                        </td>
-                                        <td>
-                                            <i class="fas fa-clock text-success"></i>
-                                            <strong>
-                                                <?php 
-                                                if ($day['total_duration'] !== null && $day['total_duration'] > 0) {
-                                                    echo round($day['total_duration'], 1) . '분';
-                                                } else {
-                                                    $estimatedDuration = ($day['exercise_count'] * 3) + (($day['exercise_count'] - 1) * 1);
-                                                    echo round(max($estimatedDuration, 30), 1) . '분 (추정)';
-                                                }
-                                                ?>
-                                            </strong>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-info"><?= $day['exercise_count'] ?>개</span>
-                                        </td>
-                                        <td>
-                                            <strong><?= number_format($day['daily_volume']) ?>kg</strong>
-                                        </td>
-                                        <td>
-                                            <a href="my_workouts.php?date=<?= $day['workout_date'] ?>" 
-                                               class="btn btn-sm btn-outline-primary">
-                                                <i class="fas fa-eye"></i> 보기
+                    <div class="row">
+                        <?php foreach ($dailyWorkouts as $day): ?>
+                            <div class="col-lg-4 col-md-6 mb-3">
+                                <div class="workout-day-card card h-100 border-0 shadow-sm">
+                                    <div class="card-body p-3">
+                                        <!-- 날짜 헤더 -->
+                                        <div class="d-flex justify-content-between align-items-center mb-3">
+                                            <div class="date-info">
+                                                <h6 class="text-primary mb-1 fw-bold">
+                                                    <?= date('m월 d일', strtotime($day['workout_date'])) ?>
+                                                </h6>
+                                                <small class="text-muted">
+                                                    <?= date('D', strtotime($day['workout_date'])) ?>
+                                                </small>
+                                            </div>
+                                            <div class="session-badge">
+                                                <span class="badge bg-primary rounded-pill">
+                                                    <?= $day['session_count'] ?>회차
+                                                </span>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- 운동 정보 -->
+                                        <div class="workout-stats mb-3">
+                                            <div class="row text-center">
+                                                <div class="col-6">
+                                                    <div class="stat-item">
+                                                        <i class="fas fa-clock text-success mb-1"></i>
+                                                        <div class="stat-value">
+                                                            <?php 
+                                                            if ($day['total_duration'] !== null && $day['total_duration'] > 0) {
+                                                                echo round($day['total_duration'], 1) . '분';
+                                                            } else {
+                                                                $estimatedDuration = ($day['exercise_count'] * 3) + (($day['exercise_count'] - 1) * 1);
+                                                                echo round(max($estimatedDuration, 30), 1) . '분';
+                                                            }
+                                                            ?>
+                                                        </div>
+                                                        <small class="text-muted">운동시간</small>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6">
+                                                    <div class="stat-item">
+                                                        <i class="fas fa-dumbbell text-info mb-1"></i>
+                                                        <div class="stat-value"><?= $day['exercise_count'] ?>개</div>
+                                                        <small class="text-muted">운동수</small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- 볼륨 정보 -->
+                                        <div class="volume-info mb-3">
+                                            <div class="d-flex align-items-center justify-content-center">
+                                                <i class="fas fa-weight-hanging text-warning me-2"></i>
+                                                <span class="fw-bold text-dark">
+                                                    <?= number_format($day['daily_volume']) ?>kg
+                                                </span>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- 상세보기 버튼 -->
+                                        <div class="text-center">
+                                            <a href="history_detail.php?date=<?= $day['workout_date'] ?>" 
+                                               class="btn btn-outline-primary btn-sm w-100">
+                                                <i class="fas fa-eye me-1"></i> 상세보기
                                             </a>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
                     </div>
                 </div>
             </div>
@@ -508,7 +583,7 @@ include 'header.php';
             <div class="card">
                 <div class="card-header">
                     <h5 class="text-primary mb-0">
-                        <i class="fas fa-chart-area"></i> 부위별 운동 분석 (<?= $currentDate->format('Y년 m월') ?>)
+                        <i class="fas fa-chart-area"></i> 부위별 운동 분석 (<?= date('Y년 m월', strtotime($selectedMonth . '-01')) ?>) - 실제 수행 기준
                     </h5>
                     <div class="mt-2">
                         <small class="text-muted">
@@ -560,8 +635,8 @@ include 'header.php';
 }
 
 .calendar-day {
-    width: 50px;
-    height: 60px;
+    width: 60px;
+    height: 75px;
     border: 2px solid #e9ecef;
     border-radius: 8px;
     display: flex;
@@ -598,12 +673,12 @@ include 'header.php';
 
 .day-number {
     font-weight: bold;
-    font-size: 14px;
+    font-size: 16px;
     line-height: 1;
 }
 
 .day-name {
-    font-size: 10px;
+    font-size: 11px;
     opacity: 0.8;
     margin-top: 2px;
 }
@@ -761,10 +836,105 @@ document.querySelectorAll('.calendar-day').forEach(day => {
     day.addEventListener('click', function() {
         const date = this.getAttribute('data-date');
         if (date) {
-            window.location.href = `my_workouts.php?date=${date}`;
+            window.location.href = `history_detail.php?date=${date}`;
         }
     });
-});
+    });
 </script>
+
+<style>
+.workout-day-card {
+    transition: all 0.3s ease;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+}
+
+.workout-day-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
+}
+
+.date-info h6 {
+    font-size: 1.1rem;
+    margin-bottom: 0;
+}
+
+.date-info small {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.session-badge .badge {
+    font-size: 0.75rem;
+    padding: 0.4em 0.8em;
+}
+
+.stat-item {
+    padding: 0.5rem 0;
+}
+
+.stat-item i {
+    font-size: 1.2rem;
+    display: block;
+}
+
+.stat-value {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin: 0.3rem 0;
+}
+
+.volume-info {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 0.8rem;
+    border-left: 4px solid #ffc107;
+}
+
+.volume-info i {
+    font-size: 1.1rem;
+}
+
+.volume-info span {
+    font-size: 1.1rem;
+}
+
+@media (max-width: 768px) {
+    .workout-day-card {
+        margin-bottom: 1rem;
+    }
+    
+    .stat-value {
+        font-size: 1rem;
+    }
+    
+    .date-info h6 {
+        font-size: 1rem;
+    }
+    
+    .calendar-day {
+        width: 70px;
+        height: 85px;
+    }
+    
+    .day-number {
+        font-size: 18px;
+    }
+    
+    .day-name {
+        font-size: 12px;
+    }
+    
+    .completion-rate {
+        font-size: 9px !important;
+    }
+    
+    .body-parts {
+        font-size: 9px !important;
+    }
+}
+</style>
 
 <?php include 'footer.php'; ?>
