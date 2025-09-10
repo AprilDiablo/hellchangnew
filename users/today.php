@@ -11,6 +11,9 @@ if (!isLoggedIn()) {
 
 $user = getCurrentUser();
 
+// 날짜 파라미터 (기본값: 오늘)
+$date = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
+
 // 페이지 제목과 부제목 설정
 $pageTitle = '운동 계획 입력';
 $pageSubtitle = '오늘의 운동 계획을 세워보세요';
@@ -697,7 +700,8 @@ include 'header.php';
             workouts: workouts,
             editMode: editMode,
             editSessionId: editSessionId,
-            editExerciseId: editExerciseId
+            editExerciseId: editExerciseId,
+            workoutDate: '<?= $date ?>'
         };
         
         fetch('save_workout.php', {

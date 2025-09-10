@@ -541,13 +541,13 @@ include 'header.php';
 <!-- 날짜 네비게이션 -->
 <div class="date-navigation">
     <a href="?date=<?= date('Y-m-d', strtotime($date . ' -1 day')) ?>" class="btn btn-outline-primary btn-custom">
-        <i class="fas fa-chevron-left"></i> 어제
+        <i class="fas fa-chevron-left"></i>
     </a>
     <div class="date-display">
         <input type="date" id="datePicker" value="<?= $date ?>" onchange="changeDate(this.value)" class="form-control">
     </div>
     <a href="?date=<?= date('Y-m-d', strtotime($date . ' +1 day')) ?>" class="btn btn-outline-primary btn-custom">
-        내일 <i class="fas fa-chevron-right"></i>
+        <i class="fas fa-chevron-right"></i>
     </a>
 </div>
 
@@ -567,7 +567,7 @@ include 'header.php';
                         <i class="fas fa-flag-checkered"></i> 운동 완료
                     </button>
                 <?php endif; ?>
-                <a href="today.php?edit_session=<?= $sessionData['session']['session_id'] ?>" 
+                <a href="today.php?edit_session=<?= $sessionData['session']['session_id'] ?>&date=<?= $date ?>" 
                    class="btn btn-light btn-sm border">
                     <i class="fas fa-edit"></i> 수정
                 </a>
@@ -633,7 +633,7 @@ include 'header.php';
                                 <i class="fas fa-check"></i>
                                 <small><?= $exercise['completed_sets'] ?>/<?= $exercise['sets'] ?></small>
                             </button>
-                            <a href="today.php?edit_exercise=<?= $exercise['wx_id'] ?>" 
+                            <a href="today.php?edit_exercise=<?= $exercise['wx_id'] ?>&date=<?= $date ?>" 
                                class="btn btn-light btn-sm border">
                                 <i class="fas fa-edit"></i>
                             </a>
@@ -973,7 +973,7 @@ include 'header.php';
             <i class="fas fa-calendar-times fa-3x text-muted"></i>
             <h4 class="text-muted">이 날의 운동 기록이 없습니다</h4>
             <p class="text-muted">운동을 기록해보세요!</p>
-            <a href="today.php" class="btn btn-primary btn-custom">
+            <a href="today.php?date=<?= $date ?>" class="btn btn-primary btn-custom">
                 <i class="fas fa-plus"></i> 운동 기록하기
             </a>
         </div>

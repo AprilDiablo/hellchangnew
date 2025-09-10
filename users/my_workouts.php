@@ -596,13 +596,13 @@ include 'header.php';
 <!-- 날짜 네비게이션 -->
 <div class="date-navigation">
     <a href="?date=<?= date('Y-m-d', strtotime($date . ' -1 day')) ?>" class="btn btn-outline-primary btn-custom">
-        <i class="fas fa-chevron-left"></i> 어제
+        <i class="fas fa-chevron-left"></i>
     </a>
     <div class="date-display">
         <input type="date" id="datePicker" value="<?= $date ?>" onchange="changeDate(this.value)" class="form-control">
     </div>
     <a href="?date=<?= date('Y-m-d', strtotime($date . ' +1 day')) ?>" class="btn btn-outline-primary btn-custom">
-        내일 <i class="fas fa-chevron-right"></i>
+        <i class="fas fa-chevron-right"></i>
     </a>
 </div>
 

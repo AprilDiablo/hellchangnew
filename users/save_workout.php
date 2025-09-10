@@ -29,6 +29,7 @@ try {
     $editMode = isset($data['editMode']) ? $data['editMode'] : false;
     $editSessionId = isset($data['editSessionId']) ? $data['editSessionId'] : null;
     $editExerciseId = isset($data['editExerciseId']) ? $data['editExerciseId'] : null;
+    $workoutDate = isset($data['workoutDate']) ? $data['workoutDate'] : date('Y-m-d');
     $workouts = isset($data['workouts']) ? $data['workouts'] : $data;
 
     if (!$workouts || !is_array($workouts)) {
@@ -63,20 +64,18 @@ try {
             }
         } else {
             // 새로 생성 모드
-            $today = date('Y-m-d');
-            
             $stmt = $pdo->prepare('
                 INSERT INTO m_workout_session (user_id, workout_date, note) 
                 VALUES (?, ?, ?) 
                 ON DUPLICATE KEY UPDATE session_id = LAST_INSERT_ID(session_id)
             ');
-            $stmt->execute([$user['id'], $today, '']);
+            $stmt->execute([$user['id'], $workoutDate, '']);
             
             $sessionId = $pdo->lastInsertId();
             if (!$sessionId) {
                 // 이미 존재하는 세션 ID 가져오기
                 $stmt = $pdo->prepare('SELECT session_id FROM m_workout_session WHERE user_id = ? AND workout_date = ?');
-                $stmt->execute([$user['id'], $today]);
+                $stmt->execute([$user['id'], $workoutDate]);
                 $sessionId = $stmt->fetchColumn();
             }
         }
