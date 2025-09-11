@@ -61,6 +61,9 @@ $bodyPartAnalysis = [
     '하체' => 0
 ];
 
+// 하체 관련 부위들을 정의
+$lowerBodyParts = ['엉덩이', '허벅지', '종아리', '발목'];
+
 $totalVolume = 0;
 
 foreach ($allExercises as $exercise) {
@@ -94,7 +97,11 @@ foreach ($allExercises as $exercise) {
                 
                 // 부위별로 분류
                 if (isset($bodyPartAnalysis[$partName])) {
+                    // 직접 매칭되는 부위 (가슴, 어깨, 등, 팔)
                     $bodyPartAnalysis[$partName] += $weightedVolume;
+                } elseif (in_array($partName, $lowerBodyParts)) {
+                    // 하체 관련 부위들을 '하체'로 통합
+                    $bodyPartAnalysis['하체'] += $weightedVolume;
                 }
             }
         }
@@ -310,6 +317,11 @@ include 'header.php';
                             $isWorkoutDay = in_array($dateStr, $workoutDates);
                             $isToday = $dateStr === $today->format('Y-m-d');
                             
+                            // 요일 체크 (0=일요일, 6=토요일)
+                            $dayOfWeek = (int)$currentDate->format('w');
+                            $isSunday = ($dayOfWeek === 0);
+                            $isSaturday = ($dayOfWeek === 6);
+                            
                             // 해당 날짜의 운동 정보 찾기
                             $dayInfo = null;
                             $dayBodyParts = [];
@@ -321,7 +333,7 @@ include 'header.php';
                                 }
                             }
                             ?>
-                            <div class="calendar-day <?= $isWorkoutDay ? 'workout-day' : '' ?> <?= $isToday ? 'today' : '' ?>" 
+                            <div class="calendar-day <?= $isWorkoutDay ? 'workout-day' : '' ?> <?= $isToday ? 'today' : '' ?> <?= $isSunday ? 'sunday' : '' ?> <?= $isSaturday ? 'saturday' : '' ?>" 
                                  data-date="<?= $dateStr ?>"
                                  title="<?php 
                                     if ($isWorkoutDay) {
@@ -383,7 +395,7 @@ include 'header.php';
                         ?>
                     </div>
                     <div class="mt-3">
-                        <div class="d-flex justify-content-center align-items-center">
+                        <div class="d-flex justify-content-center align-items-center flex-wrap">
                             <div class="legend-item me-4">
                                 <div class="legend-color workout-day"></div>
                                 <span class="ms-2">운동한 날</span>
@@ -391,6 +403,14 @@ include 'header.php';
                             <div class="legend-item me-4">
                                 <div class="legend-color today"></div>
                                 <span class="ms-2">오늘</span>
+                            </div>
+                            <div class="legend-item me-4">
+                                <div class="legend-color saturday"></div>
+                                <span class="ms-2">토요일</span>
+                            </div>
+                            <div class="legend-item me-4">
+                                <div class="legend-color sunday"></div>
+                                <span class="ms-2">일요일</span>
                             </div>
                             <div class="legend-item">
                                 <div class="legend-color"></div>
@@ -671,6 +691,56 @@ include 'header.php';
     border-color: #007bff;
 }
 
+/* 토요일 스타일 (하늘색) */
+.calendar-day.saturday {
+    color: #17a2b8 !important;
+    border-color: #17a2b8 !important;
+}
+
+.calendar-day.saturday.workout-day {
+    background: linear-gradient(135deg, #17a2b8, #20c997) !important;
+    border-color: #17a2b8 !important;
+    color: white !important;
+}
+
+.calendar-day.saturday.today {
+    border-color: #17a2b8 !important;
+    border-width: 3px !important;
+    background: #e3f2fd !important;
+    color: #17a2b8 !important;
+}
+
+.calendar-day.saturday.workout-day.today {
+    background: linear-gradient(135deg, #17a2b8, #20c997) !important;
+    border-color: #17a2b8 !important;
+    color: white !important;
+}
+
+/* 일요일 스타일 (빨간색) */
+.calendar-day.sunday {
+    color: #dc3545 !important;
+    border-color: #dc3545 !important;
+}
+
+.calendar-day.sunday.workout-day {
+    background: linear-gradient(135deg, #dc3545, #e74c3c) !important;
+    border-color: #dc3545 !important;
+    color: white !important;
+}
+
+.calendar-day.sunday.today {
+    border-color: #dc3545 !important;
+    border-width: 3px !important;
+    background: #f8d7da !important;
+    color: #dc3545 !important;
+}
+
+.calendar-day.sunday.workout-day.today {
+    background: linear-gradient(135deg, #dc3545, #e74c3c) !important;
+    border-color: #dc3545 !important;
+    color: white !important;
+}
+
 .day-number {
     font-weight: bold;
     font-size: 16px;
@@ -749,6 +819,16 @@ include 'header.php';
     border-color: #007bff;
     border-width: 3px;
     background: #f8f9fa;
+}
+
+.legend-color.saturday {
+    border-color: #17a2b8;
+    background: #e3f2fd;
+}
+
+.legend-color.sunday {
+    border-color: #dc3545;
+    background: #f8d7da;
 }
 
 @media (max-width: 768px) {

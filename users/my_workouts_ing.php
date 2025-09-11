@@ -1202,7 +1202,6 @@ function openExerciseModal(exerciseId, exerciseName, weight, reps, sets) {
         setCircle.className = 'set-circle';
         setCircle.setAttribute('data-set', i);
         setCircle.innerHTML = i;
-        setCircle.onclick = () => completeModalSet(i);
         
         const setTime = document.createElement('div');
         setTime.className = 'set-time';
@@ -1290,7 +1289,6 @@ function completeModalSet(setNumber) {
     
     // 세트 완료 표시
     setCircle.classList.add('completed');
-    setCircle.onclick = null; // 클릭 비활성화
     
     // 시간 표시
     setTime.textContent = currentTime + '초';
