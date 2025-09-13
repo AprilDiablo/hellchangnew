@@ -127,6 +127,41 @@ if ($_POST) {
                 $stmt->execute([$wx_id]);
                 
                 $message = "운동이 성공적으로 삭제되었습니다.";
+                
+            } elseif ($_POST['action'] === 'update_set_data') {
+                // 세트 데이터 업데이트
+                $session_id = $_POST['session_id'];
+                $set_number = $_POST['set_number'];
+                $weight = $_POST['weight'];
+                $reps = $_POST['reps'];
+                
+                // 사용자 권한 확인
+                $stmt = $pdo->prepare("SELECT user_id FROM m_workout_session WHERE session_id = ? AND user_id = ?");
+                $stmt->execute([$session_id, $user['id']]);
+                if (!$stmt->fetch()) {
+                    throw new Exception("권한이 없습니다.");
+                }
+                
+                // 해당 세션의 운동 목록에서 해당 세트 번호의 운동 찾기
+                $stmt = $pdo->prepare("
+                    SELECT we.wx_id 
+                    FROM m_workout_exercise we 
+                    WHERE we.session_id = ? 
+                    ORDER BY we.order_no 
+                    LIMIT 1 OFFSET ?
+                ");
+                $stmt->execute([$session_id, $set_number - 1]);
+                $exercise = $stmt->fetch();
+                
+                if (!$exercise) {
+                    throw new Exception("해당 세트를 찾을 수 없습니다.");
+                }
+                
+                // 세트 데이터 업데이트
+                $stmt = $pdo->prepare("UPDATE m_workout_exercise SET weight = ?, reps = ? WHERE wx_id = ?");
+                $stmt->execute([$weight, $reps, $exercise['wx_id']]);
+                
+                $message = "세트 데이터가 성공적으로 업데이트되었습니다.";
             }
         }
         
@@ -567,10 +602,10 @@ include 'header.php';
                         <i class="fas fa-flag-checkered"></i> 운동 완료
                     </button>
                 <?php endif; ?>
-                <a href="today.php?edit_session=<?= $sessionData['session']['session_id'] ?>&date=<?= $date ?>" 
-                   class="btn btn-light btn-sm border">
+                <button type="button" class="btn btn-light btn-sm border" 
+                        onclick="confirmEditSession(<?= $sessionData['session']['session_id'] ?>, '<?= $date ?>')">
                     <i class="fas fa-edit"></i> 수정
-                </a>
+                </button>
                 <button type="button" class="btn btn-light btn-sm border text-danger" 
                         onclick="deleteSession(<?= $sessionData['session']['session_id'] ?>)">
                     <i class="fas fa-trash"></i> 삭제
@@ -1130,6 +1165,57 @@ function togglePartDetails(partName) {
 }
 </script>
 
+<!-- 세트 조정 모달 -->
+<div class="modal fade" id="setAdjustModal" tabindex="-1" aria-labelledby="setAdjustModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="setAdjustModalLabel">세트 조정</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 무게 조정 -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">무게 (kg)</label>
+                    <div class="d-flex align-items-center">
+                        <button class="btn btn-outline-secondary btn-lg me-3" onclick="adjustValue('weight', -1)">-</button>
+                        <div class="flex-grow-1 text-center">
+                            <div class="h3 mb-3" id="weightDisplay">0kg</div>
+                            <input type="range" class="form-range" id="weightSlider" min="0" max="200" step="1" value="0" oninput="updateWeightDisplay(this.value)">
+                            <div class="d-flex justify-content-between text-muted small mt-1">
+                                <span>0kg</span>
+                                <span>200kg</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline-secondary btn-lg ms-3" onclick="adjustValue('weight', 1)">+</button>
+                    </div>
+                </div>
+                
+                <!-- 횟수 조정 -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">횟수</label>
+                    <div class="d-flex align-items-center">
+                        <button class="btn btn-outline-secondary btn-lg me-3" onclick="adjustValue('reps', -1)">-</button>
+                        <div class="flex-grow-1 text-center">
+                            <div class="h3 mb-3" id="repsDisplay">0회</div>
+                            <input type="range" class="form-range" id="repsSlider" min="0" max="50" step="1" value="0" oninput="updateRepsDisplay(this.value)">
+                            <div class="d-flex justify-content-between text-muted small mt-1">
+                                <span>0회</span>
+                                <span>50회</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline-secondary btn-lg ms-3" onclick="adjustValue('reps', 1)">+</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="applySetAdjustment()">적용</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 운동 수행 모달 -->
 <div class="modal fade" id="exerciseModal" tabindex="-1" aria-labelledby="exerciseModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-lg">
@@ -1199,9 +1285,20 @@ function openExerciseModal(exerciseId, exerciseName, weight, reps, sets) {
         setWrapper.className = 'set-wrapper';
         
         const setCircle = document.createElement('div');
-        setCircle.className = 'set-circle';
+        setCircle.className = 'set-square';
         setCircle.setAttribute('data-set', i);
-        setCircle.innerHTML = i;
+        setCircle.setAttribute('data-weight', weight);
+        setCircle.setAttribute('data-reps', reps);
+        
+        // 무게, 횟수 표시
+        setCircle.innerHTML = `
+            <div class="set-weight">${weight}kg</div>
+            <div class="set-divider"></div>
+            <div class="set-reps">${reps}회</div>
+        `;
+        
+        // 클릭 이벤트 추가
+        setCircle.onclick = () => openSetAdjustModal(i, weight, reps);
         
         const setTime = document.createElement('div');
         setTime.className = 'set-time';
@@ -1313,6 +1410,106 @@ function finishModalExercise() {
     }
 }
 
+// 세션 수정 확인 함수
+function confirmEditSession(sessionId, date) {
+    if (confirm('⚠️ 주의: 이 운동 세션을 수정하면 현재 세션의 운동 목록이 새로 교체되고, 기존에 기록된 세트별 수행 기록(무게, 횟수, 시간 등)이 삭제됩니다.\n\n정말로 수정하시겠습니까?')) {
+        window.location.href = `today.php?edit_session=${sessionId}&date=${date}`;
+    }
+}
+
+// 세트 조정 모달 열기
+function openSetAdjustModal(setNumber, currentWeight, currentReps) {
+    // 슬라이더와 디스플레이 업데이트
+    document.getElementById('weightSlider').value = currentWeight;
+    document.getElementById('repsSlider').value = currentReps;
+    document.getElementById('weightDisplay').textContent = `${currentWeight}kg`;
+    document.getElementById('repsDisplay').textContent = `${currentReps}회`;
+    
+    // 현재 조정 중인 세트 번호와 세션 ID 저장
+    window.currentAdjustingSet = setNumber;
+    window.currentSessionId = <?= $sessionData['session']['session_id'] ?? 'null' ?>;
+    
+    const modal = new bootstrap.Modal(document.getElementById('setAdjustModal'));
+    modal.show();
+}
+
+// 값 조정 함수
+function adjustValue(type, change) {
+    const slider = document.getElementById(`${type}Slider`);
+    const display = document.getElementById(`${type}Display`);
+    const currentValue = parseInt(slider.value) || 0;
+    const newValue = Math.max(0, currentValue + change);
+    
+    slider.value = newValue;
+    if (type === 'weight') {
+        display.textContent = `${newValue}kg`;
+    } else {
+        display.textContent = `${newValue}회`;
+    }
+}
+
+// 슬라이더 값 변경 시 디스플레이 업데이트
+function updateWeightDisplay(value) {
+    document.getElementById('weightDisplay').textContent = `${value}kg`;
+}
+
+function updateRepsDisplay(value) {
+    document.getElementById('repsDisplay').textContent = `${value}회`;
+}
+
+// 세트 조정 적용
+function applySetAdjustment() {
+    const newWeight = parseFloat(document.getElementById('weightSlider').value) || 0;
+    const newReps = parseInt(document.getElementById('repsSlider').value) || 0;
+    const setNumber = window.currentAdjustingSet;
+    const sessionId = window.currentSessionId;
+    
+    // 해당 세트의 표시 업데이트
+    const setElement = document.querySelector(`[data-set="${setNumber}"]`);
+    if (setElement) {
+        setElement.setAttribute('data-weight', newWeight);
+        setElement.setAttribute('data-reps', newReps);
+        
+        // 화면에 표시된 값 업데이트
+        const weightElement = setElement.querySelector('.set-weight');
+        const repsElement = setElement.querySelector('.set-reps');
+        
+        if (weightElement) weightElement.textContent = `${newWeight}kg`;
+        if (repsElement) repsElement.textContent = `${newReps}회`;
+        
+        // 데이터베이스에 저장
+        saveSetAdjustment(sessionId, setNumber, newWeight, newReps);
+    }
+    
+    // 모달 닫기
+    bootstrap.Modal.getInstance(document.getElementById('setAdjustModal')).hide();
+}
+
+// 세트 조정 데이터베이스 저장
+function saveSetAdjustment(sessionId, setNumber, weight, reps) {
+    fetch('', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: `action=update_set_data&session_id=${sessionId}&set_number=${setNumber}&weight=${weight}&reps=${reps}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('세트 데이터가 성공적으로 저장되었습니다.');
+        } else {
+            console.error('세트 데이터 저장 실패:', data.message);
+            showMessage('세트 데이터 저장에 실패했습니다.', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showMessage('세트 데이터 저장 중 오류가 발생했습니다.', 'error');
+    });
+}
+
 // 운동 기록 저장 함수
 function saveWorkoutRecord() {
     const setTimes = [];
@@ -1390,37 +1587,75 @@ function closeModalWithoutSave() {
     gap: 5px;
 }
 
-.set-circle {
+.set-square {
     width: 50px;
     height: 50px;
-    border-radius: 50%;
+    border-radius: 8px;
     background: white;
     color: black;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
+    font-size: 12px;
     font-weight: bold;
     cursor: pointer;
     transition: all 0.3s ease;
     border: 2px solid #dee2e6;
+    padding: 4px;
 }
 
-.set-circle:hover {
+.set-weight {
+    font-size: 12px;
+    color: #007bff;
+    font-weight: bold;
+    margin-bottom: 1px;
+}
+
+.set-divider {
+    width: 35px;
+    height: 1px;
+    min-height: 1px;
+    background-color: #ffffff;
+    margin: 1px 0;
+    border-radius: 0.5px;
+    flex-shrink: 0;
+    display: block;
+    border: none;
+    box-sizing: border-box;
+}
+
+.set-reps {
+    font-size: 12px;
+    color: #6c757d;
+    font-weight: bold;
+    margin-top: 1px;
+}
+
+.set-square:hover {
     background: #dee2e6;
     transform: scale(1.1);
 }
 
-.set-circle.completed {
+.set-square.completed {
     background: #28a745;
     color: white;
     border-color: #28a745;
     cursor: default;
 }
 
-.set-circle.completed:hover {
+.set-square.completed:hover {
     transform: none;
     background: #28a745;
+}
+
+/* 세트 조정 모달 z-index 설정 */
+#setAdjustModal {
+    z-index: 1060 !important;
+}
+
+#setAdjustModal .modal-backdrop {
+    z-index: 1059 !important;
 }
 
 .set-time {
@@ -1451,10 +1686,138 @@ function closeModalWithoutSave() {
 .workout-modal {
     background-color: red !important;
     color: white !important;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.4), 0 5px 15px rgba(0,0,0,0.2) !important;
+    border-radius: 20px !important;
 }
 
 .workout-modal * {
     color: white !important;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5) !important;
+}
+
+/* 제목과 헤더 텍스트 강화 */
+.workout-modal .modal-title,
+.workout-modal h1,
+.workout-modal h2,
+.workout-modal h3,
+.workout-modal h4,
+.workout-modal h5,
+.workout-modal h6 {
+    text-shadow: 0 3px 6px rgba(0,0,0,0.7), 0 1px 2px rgba(0,0,0,0.5) !important;
+}
+
+/* 버튼 텍스트 강화 */
+.workout-modal .btn {
+    text-shadow: 0 2px 4px rgba(0,0,0,0.6) !important;
+}
+
+/* 세트 네모 내부 텍스트 강화 */
+.workout-modal .set-weight,
+.workout-modal .set-reps {
+    text-shadow: 1px 1px 1px rgba(0,0,0,0.8) !important;
+    font-weight: bold !important;
+}
+
+/* 시간 표시 강화 */
+.workout-modal .set-time {
+    text-shadow: 0 3px 6px rgba(0,0,0,0.8), 0 1px 2px rgba(0,0,0,0.6) !important;
+    font-weight: bold !important;
+}
+
+/* 라벨과 작은 텍스트 */
+.workout-modal .form-label,
+.workout-modal .small,
+.workout-modal .text-muted {
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6) !important;
+}
+
+/* 진행률 바 텍스트 */
+.workout-modal .progress-bar {
+    text-shadow: 0 2px 4px rgba(0,0,0,0.8) !important;
+    font-weight: bold !important;
+}
+
+/* 모든 버튼에 그림자 효과 */
+.workout-modal .btn {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.1) !important;
+    transition: all 0.3s ease !important;
+}
+
+.workout-modal .btn:hover {
+    box-shadow: 0 6px 12px rgba(0,0,0,0.3), 0 3px 6px rgba(0,0,0,0.2) !important;
+    transform: translateY(-1px) !important;
+}
+
+.workout-modal .btn:active {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+    transform: translateY(0) !important;
+}
+
+/* 세트 네모에 그림자 효과 */
+.workout-modal .set-square {
+    box-shadow: none !important;
+    transition: all 0.3s ease !important;
+}
+
+.workout-modal .set-square:hover {
+    box-shadow: none !important;
+    transform: translateY(-2px) !important;
+}
+
+.workout-modal .set-square.completed {
+    box-shadow: none !important;
+}
+
+/* 시간 표시에 그림자 효과 */
+.workout-modal .set-time {
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+}
+
+/* 운동 정보 카드에 그림자 효과 */
+.workout-modal .exercise-info {
+    box-shadow: none !important;
+    border-radius: 10px !important;
+    padding: 1rem !important;
+    margin-bottom: 1rem !important;
+    background: rgba(255,255,255,0.05) !important;
+}
+
+/* 진행률 바에 그림자 효과 */
+.workout-modal .progress {
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1) !important;
+}
+
+.workout-modal .progress-bar {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+}
+
+/* 입력 필드에 그림자 효과 */
+.workout-modal .form-control {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+    border: 1px solid rgba(0,0,0,0.1) !important;
+}
+
+.workout-modal .form-control:focus {
+    box-shadow: 0 4px 8px rgba(0,123,255,0.2), 0 2px 4px rgba(0,123,255,0.1) !important;
+}
+
+/* 모달 헤더와 푸터에 그림자 */
+.workout-modal .modal-header {
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1) !important;
+}
+
+.workout-modal .modal-footer {
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.1) !important;
+}
+
+/* 모달 전체에 깊이감 추가 */
+.workout-modal .modal-dialog {
+    transform: perspective(1000px) rotateX(2deg) !important;
+    transition: transform 0.3s ease !important;
+}
+
+.workout-modal.show .modal-dialog {
+    transform: perspective(1000px) rotateX(0deg) !important;
 }
 
 .workout-time-edit {

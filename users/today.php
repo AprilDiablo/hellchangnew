@@ -462,6 +462,37 @@ include 'header.php';
                                         <?php endfor; ?>
                                     </div>
                                 <?php endif; ?>
+                                
+                                <!-- 운동 정보 입력 폼 (라디오버튼 선택된 운동용) -->
+                                <div class="mt-2">
+                                    <div class="row g-2">
+                                        <div class="col-4">
+                                            <input type="number" 
+                                                   class="form-control form-control-sm" 
+                                                   placeholder="무게(kg)" 
+                                                   min="0" 
+                                                   step="0.5"
+                                                   id="weight_<?= preg_replace('/[^a-zA-Z0-9]/', '_', $workout['exercise_name']) ?>"
+                                                   value="<?= $workout['weight'] ?? '' ?>">
+                                        </div>
+                                        <div class="col-4">
+                                            <input type="number" 
+                                                   class="form-control form-control-sm" 
+                                                   placeholder="횟수" 
+                                                   min="0"
+                                                   id="reps_<?= preg_replace('/[^a-zA-Z0-9]/', '_', $workout['exercise_name']) ?>"
+                                                   value="<?= $workout['reps'] ?? '' ?>">
+                                        </div>
+                                        <div class="col-4">
+                                            <input type="number" 
+                                                   class="form-control form-control-sm" 
+                                                   placeholder="세트" 
+                                                   min="0"
+                                                   id="sets_<?= preg_replace('/[^a-zA-Z0-9]/', '_', $workout['exercise_name']) ?>"
+                                                   value="<?= $workout['sets'] ?? '' ?>">
+                                        </div>
+                                    </div>
+                                </div>
                             <?php else: ?>
                                 <div class="text-warning">
                                     <strong><?= htmlspecialchars($workout['exercise_name']) ?></strong>
@@ -752,7 +783,63 @@ include 'header.php';
         const isTemp = !exerciseId || exerciseId === 'null' || exerciseId === '';
         console.log('임시 운동 여부:', isTemp);
         
-        // 운동 정보를 찾는 방법 개선
+        // 라디오버튼으로 선택된 운동의 경우 입력 폼에서 값 가져오기
+        console.log('운동명:', exerciseName);
+        
+        // 라디오버튼이 있는 카드에서 모든 number 입력 필드 찾기
+        const allNumberInputs = workoutCard.querySelectorAll('input[type="number"]');
+        console.log('카드 내 모든 number 입력 필드:', allNumberInputs.length);
+        
+        let weightInput = null, repsInput = null, setsInput = null;
+        
+        // weight, reps, sets 순서로 찾기
+        for (let input of allNumberInputs) {
+            if (input.id.includes('weight') && !weightInput) {
+                weightInput = input;
+            } else if (input.id.includes('reps') && !repsInput) {
+                repsInput = input;
+            } else if (input.id.includes('sets') && !setsInput) {
+                setsInput = input;
+            }
+        }
+        
+        console.log('입력 폼 찾기 결과:', {
+            weightInput: !!weightInput,
+            repsInput: !!repsInput,
+            setsInput: !!setsInput,
+            weightValue: weightInput ? weightInput.value : 'N/A',
+            repsValue: repsInput ? repsInput.value : 'N/A',
+            setsValue: setsInput ? setsInput.value : 'N/A'
+        });
+        
+        if (weightInput && repsInput && setsInput) {
+            // 입력 폼에서 값 가져오기
+            const weight = parseInt(weightInput.value) || 0;
+            const reps = parseInt(repsInput.value) || 0;
+            const sets = parseInt(setsInput.value) || 0;
+            
+            console.log('입력 폼에서 가져온 값:', { weight, reps, sets });
+            
+            const workoutData = {
+                exercise_name: exerciseName,
+                exercise_id: exerciseId,
+                weight: weight,
+                reps: reps,
+                sets: sets,
+                order_no: orderIndex + 1
+            };
+            
+            // 임시 운동인 경우 is_temp 플래그 추가
+            if (isTemp) {
+                workoutData.is_temp = true;
+            }
+            
+            workouts.push(workoutData);
+            console.log('입력 폼에서 운동 추가됨:', workouts[workouts.length - 1]);
+            return;
+        }
+        
+        // 기존 방식: 운동 정보를 찾는 방법 개선
         let workoutInfo = null;
         
         // 1. text-muted 클래스를 가진 div 찾기 (운동 정보가 있는 곳)
