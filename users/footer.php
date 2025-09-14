@@ -29,6 +29,12 @@
                     </a>
                 </div>
                 <div class="col">
+                    <a href="stats.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'stats.php' ? 'active' : '' ?>">
+                        <i class="fas fa-chart-bar"></i>
+                        <span>통계</span>
+                    </a>
+                </div>
+                <div class="col">
                     <a href="profile.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'profile.php' ? 'active' : '' ?>">
                         <i class="fas fa-user-cog"></i>
                         <span>설정</span>
@@ -39,5 +45,6 @@
     </nav>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </body>
 </html>

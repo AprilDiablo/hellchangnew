@@ -162,6 +162,109 @@ if ($_POST) {
                 $stmt->execute([$weight, $reps, $exercise['wx_id']]);
                 
                 $message = "세트 데이터가 성공적으로 업데이트되었습니다.";
+                
+            } elseif ($_POST['action'] === 'search_exercises') {
+                // 운동 검색
+                $searchTerm = $_POST['search_term'];
+                
+                $stmt = $pdo->prepare("
+                    SELECT ex_id, name_kr, name_en, equipment_kr
+                    FROM m_exercise 
+                    WHERE name_kr LIKE ? OR name_en LIKE ? OR ex_id IN (
+                        SELECT ex_id FROM m_exercise_alias WHERE alias LIKE ?
+                    )
+                    ORDER BY name_kr
+                    LIMIT 20
+                ");
+                $searchPattern = "%{$searchTerm}%";
+                $stmt->execute([$searchPattern, $searchPattern, $searchPattern]);
+                $exercises = $stmt->fetchAll();
+                
+                $response = [
+                    'success' => true,
+                    'exercises' => $exercises
+                ];
+                
+                header('Content-Type: application/json');
+                echo json_encode($response);
+                exit;
+                
+            } elseif ($_POST['action'] === 'add_exercises') {
+                // 여러 운동 추가
+                $session_id = $_POST['session_id'];
+                $exercisesData = json_decode($_POST['exercises_data'], true);
+                
+                // 사용자 권한 확인
+                $stmt = $pdo->prepare("SELECT user_id FROM m_workout_session WHERE session_id = ? AND user_id = ?");
+                $stmt->execute([$session_id, $user['id']]);
+                if (!$stmt->fetch()) {
+                    throw new Exception("권한이 없습니다.");
+                }
+                
+                // 현재 세션의 최대 order_no 찾기
+                $stmt = $pdo->prepare("SELECT COALESCE(MAX(order_no), 0) as max_order FROM m_workout_exercise WHERE session_id = ?");
+                $stmt->execute([$session_id]);
+                $currentMaxOrder = $stmt->fetch()['max_order'];
+                
+                $addedCount = 0;
+                foreach ($exercisesData as $exerciseData) {
+                    $currentMaxOrder++;
+                    
+                    // 운동 검색 (today.php의 searchExercise 함수와 유사한 로직)
+                    $exerciseResults = searchExerciseForAdd($pdo, $exerciseData['exercise_name']);
+                    
+                    if (!empty($exerciseResults)) {
+                        // 검색된 운동이 있으면 첫 번째 결과 사용
+                        $bestMatch = $exerciseResults[0];
+                        $stmt = $pdo->prepare("
+                            INSERT INTO m_workout_exercise (session_id, ex_id, order_no, weight, reps, sets, original_exercise_name, is_temp)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                        ");
+                        $stmt->execute([
+                            $session_id,
+                            $bestMatch['ex_id'],
+                            $currentMaxOrder,
+                            $exerciseData['weight'],
+                            $exerciseData['reps'],
+                            $exerciseData['sets'],
+                            $exerciseData['exercise_name']
+                        ]);
+                    } else {
+                        // 검색된 운동이 없으면 임시 운동으로 추가
+                        $stmt = $pdo->prepare("
+                            INSERT INTO m_temp_exercise (user_id, exercise_name, status)
+                            VALUES (?, ?, 'pending')
+                        ");
+                        $stmt->execute([$user['id'], $exerciseData['exercise_name']]);
+                        $tempExId = $pdo->lastInsertId();
+                        
+                        $stmt = $pdo->prepare("
+                            INSERT INTO m_workout_exercise (session_id, ex_id, order_no, weight, reps, sets, original_exercise_name, temp_ex_id, is_temp)
+                            VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 1)
+                        ");
+                        $stmt->execute([
+                            $session_id,
+                            $currentMaxOrder,
+                            $exerciseData['weight'],
+                            $exerciseData['reps'],
+                            $exerciseData['sets'],
+                            $exerciseData['exercise_name'],
+                            $tempExId
+                        ]);
+                    }
+                    $addedCount++;
+                }
+                
+                $response = [
+                    'success' => true,
+                    'message' => "{$addedCount}개의 운동이 성공적으로 추가되었습니다."
+                ];
+                
+                header('Content-Type: application/json');
+                echo json_encode($response);
+                $pdo->commit();
+                exit;
+                
             }
         }
         
@@ -169,12 +272,76 @@ if ($_POST) {
         
         // 페이지 새로고침으로 목록 업데이트
         header('Location: my_workouts.php?date=' . $date . '&message=' . urlencode($message));
-        exit;
-        
     } catch (Exception $e) {
-        $pdo->rollBack();
+        $pdo->rollback();
         $error = $e->getMessage();
     }
+}
+
+// 운동 검색 함수 (today.php의 searchExercise 함수와 유사)
+function searchExerciseForAdd($pdo, $exerciseName) {
+    $searchWords = preg_split('/\s+/', trim($exerciseName));
+    $conditions = [];
+    $params = [];
+
+    // 1. 공백 제거한 전체 검색어로 정확한 매칭 (최우선)
+    $noSpaceTerm = str_replace(' ', '', $exerciseName);
+    $conditions[] = "(REPLACE(e.name_kr, ' ', '') LIKE ? OR REPLACE(e.name_en, ' ', '') LIKE ? OR REPLACE(ea.alias, ' ', '') LIKE ?)";
+    $params[] = '%' . $noSpaceTerm . '%';
+    $params[] = '%' . $noSpaceTerm . '%';
+    $params[] = '%' . $noSpaceTerm . '%';
+
+    // 2. 전체 검색어로 정확한 매칭
+    $conditions[] = "(e.name_kr LIKE ? OR e.name_en LIKE ? OR ea.alias LIKE ?)";
+    $searchTerm = '%' . $exerciseName . '%';
+    $params[] = $searchTerm;
+    $params[] = $searchTerm;
+    $params[] = $searchTerm;
+
+    // 3. 단어별 검색 (모든 단어가 포함되어야 함)
+    if (count($searchWords) > 1) {
+        $wordConditions = [];
+        foreach ($searchWords as $word) {
+            if (strlen($word) > 1) {
+                $wordConditions[] = "(e.name_kr LIKE ? OR e.name_en LIKE ? OR ea.alias LIKE ?)";
+                $params[] = '%' . $word . '%';
+                $params[] = '%' . $word . '%';
+                $params[] = '%' . $word . '%';
+            }
+        }
+        if (!empty($wordConditions)) {
+            $conditions[] = "(" . implode(' AND ', $wordConditions) . ")";
+        }
+    }
+
+    $whereClause = implode(' OR ', $conditions);
+
+    $sql = "
+        SELECT DISTINCT e.ex_id, e.name_kr, e.name_en, e.equipment_kr
+        FROM m_exercise e
+        LEFT JOIN m_exercise_alias ea ON e.ex_id = ea.ex_id
+        WHERE {$whereClause}
+        ORDER BY 
+            CASE 
+                WHEN e.name_kr = ? THEN 1
+                WHEN e.name_kr LIKE ? THEN 2
+                WHEN e.name_en LIKE ? THEN 3
+                ELSE 4
+            END,
+            e.name_kr
+        LIMIT 5
+    ";
+
+    // 정확한 매칭을 위한 추가 파라미터
+    $params[] = $exerciseName;
+    $params[] = $exerciseName . '%';
+    $params[] = $exerciseName . '%';
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    return $results;
 }
 
 // 세션 단건 보기 또는 날짜별 보기 분기
@@ -368,12 +535,26 @@ foreach ($workoutSessions as $index => $session) {
         $sessionVolume += $exercise['weight'] * $exercise['reps'] * $exercise['sets'];
     }
     
+    // 사용자별 프리/엔드루틴 설정 가져오기
+    $stmt = $pdo->prepare("
+        SELECT pre_routine, post_routine 
+        FROM m_routine_settings 
+        WHERE user_id = ?
+    ");
+    $stmt->execute([$user['id']]);
+    $routineSettings = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    $preRoutine = $routineSettings['pre_routine'] ?? '';
+    $postRoutine = $routineSettings['post_routine'] ?? '';
+    
     $sessionsWithExercises[] = [
         'session' => $session,
         'exercises' => $exercises,
         'round' => $index + 1, // 1회차, 2회차...
         'session_volume' => $sessionVolume,
-        'session_percentage' => $totalDayVolume > 0 ? round(($sessionVolume / $totalDayVolume) * 100, 1) : 0
+        'session_percentage' => $totalDayVolume > 0 ? round(($sessionVolume / $totalDayVolume) * 100, 1) : 0,
+        'pre_routine' => $preRoutine,
+        'post_routine' => $postRoutine
     ];
 }
 
@@ -640,9 +821,28 @@ include 'header.php';
                 </div>
             </div>
             
-            <!-- 운동 목록 -->
+            <!-- 1. 프리루틴 -->
+            <?php if (!empty($preRoutine)): ?>
             <div class="mb-4">
-                    <?php foreach ($sessionData['exercises'] as $exercise): ?>
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h6 class="mb-0"><i class="fas fa-play"></i> 프리루틴 (운동 전)</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="routine-content"><?= nl2br(htmlspecialchars($preRoutine)) ?></div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+            
+            <!-- 2. 본운동 목록 -->
+            <div class="mb-4">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h6 class="mb-0"><i class="fas fa-dumbbell"></i> 본운동</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        <?php foreach ($sessionData['exercises'] as $exercise): ?>
                     <div class="exercise-row d-flex justify-content-between align-items-center mb-2 p-2 border rounded">
                             <div class="exercise-name">
                             <a href="#" 
@@ -678,8 +878,31 @@ include 'header.php';
                             </button>
                         </div>
                     </div>
-                <?php endforeach; ?>
+                        <?php endforeach; ?>
+                        
+                        <!-- 운동 추가 버튼 (하단) -->
+                        <div class="mt-3 text-center p-3">
+                            <button type="button" class="btn btn-outline-success btn-sm" onclick="openAddExerciseModal()">
+                                <i class="fas fa-plus"></i> 운동 추가
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
+            
+            <!-- 3. 엔드루틴 -->
+            <?php if (!empty($postRoutine)): ?>
+            <div class="mb-4">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h6 class="mb-0"><i class="fas fa-stop"></i> 엔드루틴 (운동 후)</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="routine-content"><?= nl2br(htmlspecialchars($postRoutine)) ?></div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
     <?php endforeach; ?>
@@ -1165,6 +1388,43 @@ function togglePartDetails(partName) {
 }
 </script>
 
+<!-- 운동 추가 모달 -->
+<div class="modal fade" id="addExerciseModal" tabindex="-1" aria-labelledby="addExerciseModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addExerciseModalLabel">운동 추가</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 운동 입력 텍스트박스 -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">운동 추가</label>
+                    <textarea class="form-control" id="exerciseInputText" rows="6" 
+                              placeholder="벤치프레스 80 10 3&#10;스쿼트 100 8 4&#10;데드리프트 120 5 3"></textarea>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-primary" onclick="searchAndParseExercises()">
+                            <i class="fas fa-search"></i> 검색 및 파싱
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 파싱된 운동 목록 (today.php 방식) -->
+                <div id="parsedExercisesList" class="mb-4" style="display: none;">
+                    <label class="form-label fw-bold">운동 목록</label>
+                    <div id="exercisesContainer">
+                        <!-- 파싱된 운동들이 여기에 표시됩니다 -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="addSelectedExercise()">추가</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 세트 조정 모달 -->
 <div class="modal fade" id="setAdjustModal" tabindex="-1" aria-labelledby="setAdjustModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-sm">
@@ -1417,6 +1677,307 @@ function confirmEditSession(sessionId, date) {
     }
 }
 
+// 운동 추가 모달 열기
+function openAddExerciseModal() {
+    const modal = new bootstrap.Modal(document.getElementById('addExerciseModal'));
+    modal.show();
+    
+    // 입력 필드 초기화
+    document.getElementById('exerciseInputText').value = '';
+    document.getElementById('parsedExercisesList').style.display = 'none';
+    document.getElementById('exercisesContainer').innerHTML = '';
+    
+    // 파싱된 운동 초기화
+    window.parsedExercises = null;
+    window.exerciseResults = {};
+}
+
+// 검색 및 파싱 (today.php 방식)
+function searchAndParseExercises() {
+    const inputText = document.getElementById('exerciseInputText').value.trim();
+    const container = document.getElementById('parsedExercisesList');
+    const exercisesContainer = document.getElementById('exercisesContainer');
+    
+    if (!inputText) {
+        alert('운동을 입력해주세요.');
+        return;
+    }
+    
+    const lines = inputText.split('\n').filter(line => line.trim());
+    const parsedExercises = [];
+    
+    lines.forEach((line, index) => {
+        const trimmedLine = line.trim();
+        if (trimmedLine) {
+            const parts = trimmedLine.split(/\s+/);
+            if (parts.length >= 1) {
+                const exercise = {
+                    exercise_name: parts[0],
+                    weight: parts[1] ? parseFloat(parts[1]) || 0 : 0,
+                    reps: parts[2] ? parseInt(parts[2]) || 0 : 0,
+                    sets: parts[3] ? parseInt(parts[3]) || 0 : 0
+                };
+                parsedExercises.push(exercise);
+            }
+        }
+    });
+    
+    if (parsedExercises.length > 0) {
+        // 각 운동에 대해 검색 수행
+        searchExercisesForAdd(parsedExercises);
+        container.style.display = 'block';
+        window.parsedExercises = parsedExercises;
+    } else {
+        alert('올바른 형식으로 운동을 입력해주세요.');
+    }
+}
+
+// 운동 검색 및 표시 (today.php 방식)
+function searchExercisesForAdd(exercises) {
+    const container = document.getElementById('exercisesContainer');
+    container.innerHTML = '';
+    
+    exercises.forEach((exercise, index) => {
+        // 각 운동에 대해 검색 요청
+        fetch('', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: `action=search_exercises&search_term=${encodeURIComponent(exercise.exercise_name)}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayExerciseCard(exercise, data.exercises, index);
+            } else {
+                displayExerciseCard(exercise, [], index);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            displayExerciseCard(exercise, [], index);
+        });
+    });
+}
+
+// 운동 카드 표시 (today.php 방식)
+function displayExerciseCard(exercise, searchResults, index) {
+    const container = document.getElementById('exercisesContainer');
+    const exerciseName = exercise.exercise_name;
+    const safeName = exerciseName.replace(/[^a-zA-Z0-9]/g, '_');
+    
+    let html = `
+        <div class="card mb-3" data-index="${index}">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">${exerciseName}</h6>
+                    <span class="badge bg-primary">${index + 1}</span>
+                </div>
+    `;
+    
+    if (searchResults.length === 0) {
+        // 검색 결과가 없는 경우
+        html += `
+            <div class="text-warning">
+                <strong>${exerciseName}</strong> - 검색 결과 없음 (임시 운동으로 추가)
+            </div>
+        `;
+    } else if (searchResults.length === 1) {
+        // 검색 결과가 1개인 경우
+        const result = searchResults[0];
+        html += `
+            <div class="text-success">
+                ✓ ${result.name_kr}
+                ${result.name_en ? `<small class="text-muted">(${result.name_en})</small>` : ''}
+            </div>
+        `;
+    } else {
+        // 검색 결과가 여러 개인 경우
+        html += `
+            <div class="form-check">
+                <input class="form-check-input" type="radio" 
+                       name="selected_exercise_${safeName}" 
+                       id="ex_${safeName}_0" 
+                       value="${searchResults[0].ex_id}" 
+                       checked>
+                <label class="form-check-label" for="ex_${safeName}_0">
+                    ${searchResults[0].name_kr}
+                    ${searchResults[0].name_en ? `<small class="text-muted">(${searchResults[0].name_en})</small>` : ''}
+                    <button type="button" class="btn btn-sm btn-link p-0 ms-2" 
+                            onclick="toggleMoreResults('${safeName}')"
+                            title="더 보기">
+                        🔽
+                    </button>
+                </label>
+            </div>
+            
+            <div id="more_results_${safeName}" class="more-results" style="display: none;">
+        `;
+        
+        for (let i = 1; i < searchResults.length; i++) {
+            const result = searchResults[i];
+            html += `
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" 
+                           name="selected_exercise_${safeName}" 
+                           id="ex_${safeName}_${i}" 
+                           value="${result.ex_id}">
+                    <label class="form-check-label" for="ex_${safeName}_${i}">
+                        ${result.name_kr}
+                        ${result.name_en ? `<small class="text-muted">(${result.name_en})</small>` : ''}
+                    </label>
+                </div>
+            `;
+        }
+        
+        html += `</div>`;
+    }
+    
+    // 무게, 횟수, 세트 입력 필드
+    html += `
+        <div class="mt-2">
+            <div class="row g-2">
+                <div class="col-4">
+                    <input type="number" 
+                           class="form-control form-control-sm" 
+                           placeholder="무게(kg)" 
+                           min="0" 
+                           step="0.5"
+                           id="weight_${safeName}"
+                           value="${exercise.weight || ''}">
+                </div>
+                <div class="col-4">
+                    <input type="number" 
+                           class="form-control form-control-sm" 
+                           placeholder="횟수" 
+                           min="0"
+                           id="reps_${safeName}"
+                           value="${exercise.reps || ''}">
+                </div>
+                <div class="col-4">
+                    <input type="number" 
+                           class="form-control form-control-sm" 
+                           placeholder="세트" 
+                           min="0"
+                           id="sets_${safeName}"
+                           value="${exercise.sets || ''}">
+                </div>
+            </div>
+        </div>
+    `;
+    
+    html += `</div></div>`;
+    
+    container.insertAdjacentHTML('beforeend', html);
+}
+
+// 더 보기 토글
+function toggleMoreResults(safeName) {
+    const moreResults = document.getElementById(`more_results_${safeName}`);
+    const button = event.target;
+    
+    if (moreResults.style.display === 'none') {
+        moreResults.style.display = 'block';
+        button.textContent = '🔼';
+    } else {
+        moreResults.style.display = 'none';
+        button.textContent = '🔽';
+    }
+}
+
+
+// 선택된 운동 추가 (today.php 방식)
+function addSelectedExercise() {
+    if (!window.parsedExercises || window.parsedExercises.length === 0) {
+        alert('추가할 운동을 입력해주세요.');
+        return;
+    }
+    
+    const exercisesToAdd = [];
+    
+    // 각 운동 카드에서 선택된 운동과 입력값 수집
+    window.parsedExercises.forEach((exercise, index) => {
+        const safeName = exercise.exercise_name.replace(/[^a-zA-Z0-9]/g, '_');
+        const card = document.querySelector(`[data-index="${index}"]`);
+        
+        if (card) {
+            // 라디오 버튼이 있는 운동들 (여러 검색 결과)
+            const checkedRadio = card.querySelector('input[type="radio"]:checked');
+            if (checkedRadio) {
+                const exerciseId = checkedRadio.value;
+                const exerciseName = exercise.exercise_name;
+                
+                // 무게, 횟수, 세트 값 가져오기
+                const weight = parseFloat(document.getElementById(`weight_${safeName}`).value) || 0;
+                const reps = parseInt(document.getElementById(`reps_${safeName}`).value) || 0;
+                const sets = parseInt(document.getElementById(`sets_${safeName}`).value) || 0;
+                
+                exercisesToAdd.push({
+                    ex_id: exerciseId,
+                    exercise_name: exerciseName,
+                    weight: weight,
+                    reps: reps,
+                    sets: sets,
+                    type: 'search'
+                });
+            } else {
+                // 검색 결과가 없는 경우 (임시 운동)
+                const weight = parseFloat(document.getElementById(`weight_${safeName}`).value) || 0;
+                const reps = parseInt(document.getElementById(`reps_${safeName}`).value) || 0;
+                const sets = parseInt(document.getElementById(`sets_${safeName}`).value) || 0;
+                
+                exercisesToAdd.push({
+                    exercise_name: exercise.exercise_name,
+                    weight: weight,
+                    reps: reps,
+                    sets: sets,
+                    type: 'manual'
+                });
+            }
+        }
+    });
+    
+    if (exercisesToAdd.length > 0) {
+        addExercisesToSession(exercisesToAdd);
+    } else {
+        alert('추가할 운동을 선택해주세요.');
+    }
+}
+
+// 세션에 운동들 추가
+function addExercisesToSession(exercises) {
+    const sessionId = <?= $sessionData['session']['session_id'] ?? 'null' ?>;
+    
+    fetch('', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: `action=add_exercises&session_id=${sessionId}&exercises_data=${encodeURIComponent(JSON.stringify(exercises))}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMessage(`${exercises.length}개의 운동이 성공적으로 추가되었습니다.`, 'success');
+            // 페이지 새로고침으로 목록 업데이트
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        } else {
+            console.error('운동 추가 실패:', data.message);
+            showMessage('운동 추가에 실패했습니다: ' + data.message, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showMessage('운동 추가 중 오류가 발생했습니다.', 'error');
+    });
+}
+
+
 // 세트 조정 모달 열기
 function openSetAdjustModal(setNumber, currentWeight, currentReps) {
     // 슬라이더와 디스플레이 업데이트
@@ -1570,6 +2131,7 @@ function closeModalWithoutSave() {
         bootstrap.Modal.getInstance(document.getElementById('exerciseModal')).hide();
     }
 }
+
 </script>
 
 <style>
@@ -1647,6 +2209,15 @@ function closeModalWithoutSave() {
 .set-square.completed:hover {
     transform: none;
     background: #28a745;
+}
+
+/* 운동 추가 모달 z-index 설정 */
+#addExerciseModal {
+    z-index: 1070 !important;
+}
+
+#addExerciseModal .modal-backdrop {
+    z-index: 1069 !important;
 }
 
 /* 세트 조정 모달 z-index 설정 */
@@ -1780,6 +2351,14 @@ function closeModalWithoutSave() {
     padding: 1rem !important;
     margin-bottom: 1rem !important;
     background: rgba(255,255,255,0.05) !important;
+}
+
+/* 루틴 내용 스타일 */
+.routine-content {
+    white-space: pre-line;
+    line-height: 1.6;
+    font-size: 14px;
+    color: #333;
 }
 
 /* 진행률 바에 그림자 효과 */
