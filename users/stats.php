@@ -230,48 +230,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         </div>
     </div>
     
-    <!-- 통계 카드들 -->
-    <div class="row">
-        <div class="col-md-3 mb-4">
-            <div class="card text-center">
-                <div class="card-body">
-                    <i class="fas fa-dumbbell fa-3x text-primary mb-3"></i>
-                    <h5 class="card-title">총 운동일</h5>
-                    <h3 class="text-primary">0일</h3>
-                </div>
-            </div>
-        </div>
-        
-        <div class="col-md-3 mb-4">
-            <div class="card text-center">
-                <div class="card-body">
-                    <i class="fas fa-weight fa-3x text-success mb-3"></i>
-                    <h5 class="card-title">총 볼륨</h5>
-                    <h3 class="text-success">0kg</h3>
-                </div>
-            </div>
-        </div>
-        
-        <div class="col-md-3 mb-4">
-            <div class="card text-center">
-                <div class="card-body">
-                    <i class="fas fa-fire fa-3x text-warning mb-3"></i>
-                    <h5 class="card-title">평균 세트</h5>
-                    <h3 class="text-warning">0세트</h3>
-                </div>
-            </div>
-        </div>
-        
-        <div class="col-md-3 mb-4">
-            <div class="card text-center">
-                <div class="card-body">
-                    <i class="fas fa-trophy fa-3x text-info mb-3"></i>
-                    <h5 class="card-title">완료율</h5>
-                    <h3 class="text-info">0%</h3>
-                </div>
-            </div>
-        </div>
-    </div>
     
     <!-- 날짜별 평균 무게 그래프 -->
     <div class="row">
