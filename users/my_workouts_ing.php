@@ -25,8 +25,6 @@ $error = '';
 // 수정/삭제 처리
 if ($_POST) {
     $pdo = getDB();
-    try {
-        $pdo->beginTransaction();
         
         if (isset($_POST['action'])) {
             if ($_POST['action'] === 'start_workout') {
@@ -37,7 +35,8 @@ if ($_POST) {
                 $stmt = $pdo->prepare("SELECT user_id FROM m_workout_session WHERE session_id = ? AND user_id = ?");
                 $stmt->execute([$session_id, $user['id']]);
                 if (!$stmt->fetch()) {
-                    throw new Exception("권한이 없습니다.");
+                    echo json_encode(['success' => false, 'message' => '권한이 없습니다.']);
+                    exit;
                 }
                 
                 // 시작시간이 없으면 현재 시간으로 저장
@@ -54,7 +53,8 @@ if ($_POST) {
                 $stmt = $pdo->prepare("SELECT user_id FROM m_workout_session WHERE session_id = ? AND user_id = ?");
                 $stmt->execute([$session_id, $user['id']]);
                 if (!$stmt->fetch()) {
-                    throw new Exception("권한이 없습니다.");
+                    echo json_encode(['success' => false, 'message' => '권한이 없습니다.']);
+                    exit;
                 }
                 
                 // 종료시간이 없으면 현재 시간으로 저장
@@ -73,7 +73,8 @@ if ($_POST) {
                 $stmt = $pdo->prepare("SELECT user_id FROM m_workout_session WHERE session_id = ? AND user_id = ?");
                 $stmt->execute([$session_id, $user['id']]);
                 if (!$stmt->fetch()) {
-                    throw new Exception("권한이 없습니다.");
+                    echo json_encode(['success' => false, 'message' => '권한이 없습니다.']);
+                    exit;
                 }
                 
                 // 시간 업데이트
@@ -97,7 +98,8 @@ if ($_POST) {
                 $stmt = $pdo->prepare("SELECT user_id FROM m_workout_session WHERE session_id = ? AND user_id = ?");
                 $stmt->execute([$session_id, $user['id']]);
                 if (!$stmt->fetch()) {
-                    throw new Exception("삭제 권한이 없습니다.");
+                    echo json_encode(['success' => false, 'message' => '삭제 권한이 없습니다.']);
+                    exit;
                 }
                 
                 // 운동 세션 삭제 (CASCADE로 관련 운동들도 자동 삭제됨)
@@ -119,7 +121,8 @@ if ($_POST) {
                 ");
                 $stmt->execute([$wx_id, $user['id']]);
                 if (!$stmt->fetch()) {
-                    throw new Exception("삭제 권한이 없습니다.");
+                    echo json_encode(['success' => false, 'message' => '삭제 권한이 없습니다.']);
+                    exit;
                 }
                 
                 // 운동 삭제 (CASCADE로 관련 세트들도 자동 삭제됨)
@@ -130,38 +133,155 @@ if ($_POST) {
                 
             } elseif ($_POST['action'] === 'update_set_data') {
                 // 세트 데이터 업데이트
-                $session_id = $_POST['session_id'];
-                $set_number = $_POST['set_number'];
+                $wx_id = $_POST['wx_id'];
                 $weight = $_POST['weight'];
                 $reps = $_POST['reps'];
                 
                 // 사용자 권한 확인
-                $stmt = $pdo->prepare("SELECT user_id FROM m_workout_session WHERE session_id = ? AND user_id = ?");
-                $stmt->execute([$session_id, $user['id']]);
-                if (!$stmt->fetch()) {
-                    throw new Exception("권한이 없습니다.");
-                }
-                
-                // 해당 세션의 운동 목록에서 해당 세트 번호의 운동 찾기
                 $stmt = $pdo->prepare("
-                    SELECT we.wx_id 
-                    FROM m_workout_exercise we 
-                    WHERE we.session_id = ? 
-                    ORDER BY we.order_no 
-                    LIMIT 1 OFFSET ?
+                    SELECT ws.user_id 
+                    FROM m_workout_exercise we
+                    JOIN m_workout_session ws ON we.session_id = ws.session_id
+                    WHERE we.wx_id = ? AND ws.user_id = ?
                 ");
-                $stmt->execute([$session_id, $set_number - 1]);
-                $exercise = $stmt->fetch();
-                
-                if (!$exercise) {
-                    throw new Exception("해당 세트를 찾을 수 없습니다.");
+                $stmt->execute([$wx_id, $user['id']]);
+                if (!$stmt->fetch()) {
+                    echo json_encode(['success' => false, 'message' => '권한이 없습니다.']);
+                    exit;
                 }
                 
                 // 세트 데이터 업데이트
                 $stmt = $pdo->prepare("UPDATE m_workout_exercise SET weight = ?, reps = ? WHERE wx_id = ?");
-                $stmt->execute([$weight, $reps, $exercise['wx_id']]);
+                $stmt->execute([$weight, $reps, $wx_id]);
+                
+                // AJAX 요청인 경우 JSON 응답
+                if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => true, 'message' => '세트 데이터가 성공적으로 업데이트되었습니다.']);
+                    exit;
+                }
                 
                 $message = "세트 데이터가 성공적으로 업데이트되었습니다.";
+                
+            } elseif ($_POST['action'] === 'update_exercise_info') {
+                // 디버그: 받은 POST 데이터 확인
+                error_log("update_exercise_info 요청 받음 - POST 데이터: " . print_r($_POST, true));
+                
+                // 운동 정보 업데이트 (무게, 횟수, 세트)
+                $wx_id = $_POST['wx_id'];
+                $weight = $_POST['weight'];
+                $reps = $_POST['reps'];
+                $sets = $_POST['sets'];
+                
+                // 사용자 권한 확인
+                $stmt = $pdo->prepare("
+                    SELECT ws.user_id 
+                    FROM m_workout_exercise we
+                    JOIN m_workout_session ws ON we.session_id = ws.session_id
+                    WHERE we.wx_id = ? AND ws.user_id = ?
+                ");
+                $stmt->execute([$wx_id, $user['id']]);
+                $auth_result = $stmt->fetch();
+                if (!$auth_result) {
+                    echo json_encode(['success' => false, 'message' => "권한이 없습니다. wx_id: $wx_id, user_id: " . $user['id']]);
+                    exit;
+                }
+                
+                // 업데이트 전 현재 값 확인
+                $stmt = $pdo->prepare("SELECT weight, reps, sets FROM m_workout_exercise WHERE wx_id = ?");
+                $stmt->execute([$wx_id]);
+                $current_values = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                // 데이터 타입 변환 확인
+                $weight = (float)$weight;
+                $reps = (int)$reps;
+                $sets = (int)$sets;
+                
+                // 운동 정보 업데이트
+                $update_query = "UPDATE m_workout_exercise SET weight = $weight, reps = $reps, sets = $sets WHERE wx_id = $wx_id";
+                $stmt = $pdo->prepare("UPDATE m_workout_exercise SET weight = ?, reps = ?, sets = ? WHERE wx_id = ?");
+                $result = $stmt->execute([$weight, $reps, $sets, $wx_id]);
+                
+                // 디버깅: 업데이트 결과 확인
+                $affected_rows = $stmt->rowCount();
+                
+                // 업데이트 후 값 확인
+                $stmt = $pdo->prepare("SELECT weight, reps, sets FROM m_workout_exercise WHERE wx_id = ?");
+                $stmt->execute([$wx_id]);
+                $after_values = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                // AJAX 요청인 경우 JSON 응답
+                if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+                    header('Content-Type: application/json');
+                    if ($result && $affected_rows > 0) {
+                        echo json_encode([
+                            'success' => true, 
+                            'message' => "운동 정보가 성공적으로 업데이트되었습니다. (영향받은 행: {$affected_rows})",
+                        ]);
+                    } else {
+                        echo json_encode([
+                            'success' => false, 
+                            'message' => "업데이트 실패. 영향받은 행: {$affected_rows}"
+                        ]);
+                    }
+                    exit;
+                }
+                
+                $message = "운동 정보가 성공적으로 업데이트되었습니다.";
+                
+            } elseif ($_POST['action'] === 'get_completed_exercise') {
+                // 완료된 운동 데이터 가져오기
+                $wx_id = $_POST['wx_id'];
+                
+                // 사용자 권한 확인
+                $stmt = $pdo->prepare("
+                    SELECT ws.user_id 
+                    FROM m_workout_exercise we
+                    JOIN m_workout_session ws ON we.session_id = ws.session_id
+                    WHERE we.wx_id = ? AND ws.user_id = ?
+                ");
+                $stmt->execute([$wx_id, $user['id']]);
+                if (!$stmt->fetch()) {
+                    echo json_encode(['success' => false, 'message' => '권한이 없습니다.']);
+                    exit;
+                }
+                
+                // 운동 정보 가져오기
+                $stmt = $pdo->prepare("
+                    SELECT we.*, 
+                           COALESCE(e.name_kr, te.exercise_name) as name_kr,
+                           e.name_en, 
+                           e.equipment,
+                           we.is_temp,
+                           te.exercise_name as temp_exercise_name
+                    FROM m_workout_exercise we
+                    LEFT JOIN m_exercise e ON we.ex_id = e.ex_id
+                    LEFT JOIN m_temp_exercise te ON we.temp_ex_id = te.temp_ex_id
+                    WHERE we.wx_id = ?
+                ");
+                $stmt->execute([$wx_id]);
+                $exercise = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                // 완료된 세트들 가져오기
+                $stmt = $pdo->prepare("
+                    SELECT set_no, weight, reps, rest_time, completed_at
+                    FROM m_workout_set 
+                    WHERE wx_id = ?
+                    ORDER BY set_no ASC
+                ");
+                $stmt->execute([$wx_id]);
+                $sets = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // AJAX 요청인 경우 JSON 응답
+                if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+                    header('Content-Type: application/json');
+                    echo json_encode([
+                        'success' => true,
+                        'exercise' => $exercise,
+                        'sets' => $sets
+                    ]);
+                    exit;
+                }
                 
             } elseif ($_POST['action'] === 'search_exercises') {
                 // 운동 검색
@@ -198,7 +318,8 @@ if ($_POST) {
                 $stmt = $pdo->prepare("SELECT user_id FROM m_workout_session WHERE session_id = ? AND user_id = ?");
                 $stmt->execute([$session_id, $user['id']]);
                 if (!$stmt->fetch()) {
-                    throw new Exception("권한이 없습니다.");
+                    echo json_encode(['success' => false, 'message' => '권한이 없습니다.']);
+                    exit;
                 }
                 
                 // 현재 세션의 최대 order_no 찾기
@@ -268,14 +389,8 @@ if ($_POST) {
             }
         }
         
-        $pdo->commit();
-        
         // 페이지 새로고침으로 목록 업데이트
         header('Location: my_workouts.php?date=' . $date . '&message=' . urlencode($message));
-    } catch (Exception $e) {
-        $pdo->rollback();
-        $error = $e->getMessage();
-    }
 }
 
 // 운동 검색 함수 (today.php의 searchExercise 함수와 유사)
@@ -794,48 +909,7 @@ include 'header.php';
             </div>
         </div>
         <div class="card-body">
-            <!-- 운동 시간 정보 -->
-            <div class="workout-time-edit mb-3">
-                <div class="row">
-                    <div class="col-md-5">
-                        <label class="form-label">시작시간</label>
-                        <input type="time" 
-                               class="form-control form-control-sm" 
-                               id="start_time_<?= $sessionData['session']['session_id'] ?>"
-                               value="<?= $sessionData['session']['start_time'] ? date('H:i', strtotime($sessionData['session']['start_time'])) : '' ?>">
-                    </div>
-                    <div class="col-md-5">
-                        <label class="form-label">종료시간</label>
-                        <input type="time" 
-                               class="form-control form-control-sm" 
-                               id="end_time_<?= $sessionData['session']['session_id'] ?>"
-                               value="<?= $sessionData['session']['end_time'] ? date('H:i', strtotime($sessionData['session']['end_time'])) : '' ?>">
-                    </div>
-                    <div class="col-md-2 d-flex align-items-end">
-                        <button type="button" 
-                                class="btn btn-primary btn-sm" 
-                                onclick="updateWorkoutTime(<?= $sessionData['session']['session_id'] ?>)">
-                            <i class="fas fa-save"></i> 수정
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- 1. 프리루틴 -->
-            <?php if (!empty($preRoutine)): ?>
-            <div class="mb-4">
-                <div class="card">
-                    <div class="card-header bg-primary text-white">
-                        <h6 class="mb-0"><i class="fas fa-play"></i> 프리루틴 (운동 전)</h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="routine-content"><?= nl2br(htmlspecialchars($preRoutine)) ?></div>
-                    </div>
-                </div>
-            </div>
-            <?php endif; ?>
-            
-            <!-- 2. 본운동 목록 -->
+            <!-- 1. 본운동 목록 -->
             <div class="mb-4">
                 <div class="card">
                     <div class="card-header bg-info text-white">
@@ -864,7 +938,8 @@ include 'header.php';
                         <div class="btn-group btn-group-sm">
                             <!-- 완료 상태 버튼 -->
                             <button type="button" class="btn btn-sm border <?= $exercise['is_completed'] ? 'btn-success' : 'btn-outline-secondary' ?>" 
-                                    title="<?= $exercise['is_completed'] ? '완료됨' : '미완료' ?>">
+                                    title="<?= $exercise['is_completed'] ? '완료됨' : '미완료' ?>"
+                                    onclick="loadCompletedExercise(<?= $exercise['wx_id'] ?>)">
                                 <i class="fas fa-check"></i>
                                 <small><?= $exercise['completed_sets'] ?>/<?= $exercise['sets'] ?></small>
                             </button>
@@ -903,6 +978,47 @@ include 'header.php';
                 </div>
             </div>
             <?php endif; ?>
+            
+            <!-- 4. 프리루틴 -->
+            <?php if (!empty($preRoutine)): ?>
+            <div class="mb-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h6 class="mb-0"><i class="fas fa-play"></i> 프리루틴 (운동 전)</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="routine-content"><?= nl2br(htmlspecialchars($preRoutine)) ?></div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+            
+            <!-- 5. 운동 시간 정보 -->
+            <div class="workout-time-edit mb-3">
+                <div class="row">
+                    <div class="col-md-5">
+                        <label class="form-label">시작시간</label>
+                        <input type="time" 
+                               class="form-control form-control-sm" 
+                               id="start_time_<?= $sessionData['session']['session_id'] ?>"
+                               value="<?= $sessionData['session']['start_time'] ? date('H:i', strtotime($sessionData['session']['start_time'])) : '' ?>">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">종료시간</label>
+                        <input type="time" 
+                               class="form-control form-control-sm" 
+                               id="end_time_<?= $sessionData['session']['session_id'] ?>"
+                               value="<?= $sessionData['session']['end_time'] ? date('H:i', strtotime($sessionData['session']['end_time'])) : '' ?>">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="button" 
+                                class="btn btn-primary btn-sm" 
+                                onclick="updateWorkoutTime(<?= $sessionData['session']['session_id'] ?>)">
+                            <i class="fas fa-save"></i> 수정
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     <?php endforeach; ?>
@@ -1425,6 +1541,74 @@ function togglePartDetails(partName) {
     </div>
 </div>
 
+<!-- 운동 정보 수정 모달 -->
+<div class="modal fade" id="exerciseInfoModal" tabindex="-1" aria-labelledby="exerciseInfoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="exerciseInfoModalLabel">운동 정보 수정</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 무게 조정 -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">무게 (kg)</label>
+                    <div class="d-flex align-items-center">
+                        <button class="btn btn-outline-secondary btn-lg me-3" onclick="adjustExerciseValue('weight', -1)">-</button>
+                        <div class="flex-grow-1 text-center">
+                            <div class="h3 mb-3" id="exerciseWeightDisplay">0kg</div>
+                            <input type="range" class="form-range" id="exerciseWeightSlider" min="0" max="200" step="1" value="0" oninput="updateExerciseWeightDisplay(this.value)">
+                            <div class="d-flex justify-content-between text-muted small mt-1">
+                                <span>0kg</span>
+                                <span>200kg</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline-secondary btn-lg ms-3" onclick="adjustExerciseValue('weight', 1)">+</button>
+                    </div>
+                </div>
+                
+                <!-- 횟수 조정 -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">횟수</label>
+                    <div class="d-flex align-items-center">
+                        <button class="btn btn-outline-secondary btn-lg me-3" onclick="adjustExerciseValue('reps', -1)">-</button>
+                        <div class="flex-grow-1 text-center">
+                            <div class="h3 mb-3" id="exerciseRepsDisplay">0회</div>
+                            <input type="range" class="form-range" id="exerciseRepsSlider" min="0" max="50" step="1" value="0" oninput="updateExerciseRepsDisplay(this.value)">
+                            <div class="d-flex justify-content-between text-muted small mt-1">
+                                <span>0회</span>
+                                <span>50회</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline-secondary btn-lg ms-3" onclick="adjustExerciseValue('reps', 1)">+</button>
+                    </div>
+                </div>
+                
+                <!-- 세트 조정 -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">세트</label>
+                    <div class="d-flex align-items-center">
+                        <button class="btn btn-outline-secondary btn-lg me-3" onclick="adjustExerciseValue('sets', -1)">-</button>
+                        <div class="flex-grow-1 text-center">
+                            <div class="h3 mb-3" id="exerciseSetsDisplay">0세트</div>
+                            <input type="range" class="form-range" id="exerciseSetsSlider" min="0" max="20" step="1" value="0" oninput="updateExerciseSetsDisplay(this.value)">
+                            <div class="d-flex justify-content-between text-muted small mt-1">
+                                <span>0세트</span>
+                                <span>20세트</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline-secondary btn-lg ms-3" onclick="adjustExerciseValue('sets', 1)">+</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="applyExerciseInfoAdjustment()">적용</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 세트 조정 모달 -->
 <div class="modal fade" id="setAdjustModal" tabindex="-1" aria-labelledby="setAdjustModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-sm">
@@ -1484,12 +1668,14 @@ function togglePartDetails(partName) {
                 <h5 class="modal-title" id="exerciseModalLabel">
                     <i class="fas fa-dumbbell"></i> <span id="modalExerciseName"></span>
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" onclick="closeModalWithoutSave()" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <!-- 운동 정보 -->
                 <div class="exercise-info mb-4 text-center">
-                    <h4 class="text-primary" id="modalExerciseInfo">20kg × 15회 × 5세트</h4>
+                    <button type="button" class="btn btn-outline-primary btn-lg" id="modalExerciseInfo" onclick="openExerciseInfoModal()">
+                        <i class="fas fa-edit"></i> 20kg × 15회 × 5세트
+                    </button>
                 </div>
                 
                 <!-- 타이머 -->
@@ -1531,43 +1717,73 @@ function openExerciseModal(exerciseId, exerciseName, weight, reps, sets) {
     modalTotalSets = sets;
     modalCompletedSets = 0;
     
+    // 현재 운동 정보를 전역 변수에 저장 (부모창 업데이트용)
+    window.currentExerciseInfo = {
+        id: exerciseId,
+        name: exerciseName,
+        weight: weight,
+        reps: reps,
+        sets: sets
+    };
+    
     // 모달 내용 설정
     document.getElementById('modalExerciseName').textContent = exerciseName;
-    document.getElementById('modalExerciseInfo').textContent = `${weight}kg × ${reps}회 × ${sets}세트`;
+    document.getElementById('modalExerciseInfo').textContent = `${Math.floor(weight)}kg × ${reps}회 × ${sets}세트`;
     
     // 세트 컨테이너 초기화
     const setsContainer = document.getElementById('modalSetsContainer');
     setsContainer.innerHTML = '';
     
-    // 세트 동그라미들 생성
-    for (let i = 1; i <= sets; i++) {
-        const setWrapper = document.createElement('div');
-        setWrapper.className = 'set-wrapper';
+    // 총 0세트일 때 첫 번째 세트 시작 영역 표시
+    if (sets === 0) {
+        const startSetWrapper = document.createElement('div');
+        startSetWrapper.className = 'set-wrapper';
+        startSetWrapper.style.textAlign = 'center';
         
-        const setCircle = document.createElement('div');
-        setCircle.className = 'set-square';
-        setCircle.setAttribute('data-set', i);
-        setCircle.setAttribute('data-weight', weight);
-        setCircle.setAttribute('data-reps', reps);
-        
-        // 무게, 횟수 표시
-        setCircle.innerHTML = `
-            <div class="set-weight">${weight}kg</div>
-            <div class="set-divider"></div>
-            <div class="set-reps">${reps}회</div>
+        const startSetMessage = document.createElement('div');
+        startSetMessage.className = 'start-set-message';
+        startSetMessage.innerHTML = `
+            <div style="color: white; font-size: 16px; margin-bottom: 10px;">
+                초를 클릭하여 첫 번째 세트 시작
+            </div>
+            <div style="color: #ccc; font-size: 14px;">
+                운동을 시작하려면 타이머를 클릭하세요
+            </div>
         `;
         
-        // 클릭 이벤트 추가
-        setCircle.onclick = () => openSetAdjustModal(i, weight, reps);
-        
-        const setTime = document.createElement('div');
-        setTime.className = 'set-time';
-        setTime.id = `set-time-${i}`;
-        setTime.innerHTML = '';
-        
-        setWrapper.appendChild(setCircle);
-        setWrapper.appendChild(setTime);
-        setsContainer.appendChild(setWrapper);
+        startSetWrapper.appendChild(startSetMessage);
+        setsContainer.appendChild(startSetWrapper);
+    } else {
+        // 세트 동그라미들 생성
+        for (let i = 1; i <= sets; i++) {
+            const setWrapper = document.createElement('div');
+            setWrapper.className = 'set-wrapper';
+            
+            const setCircle = document.createElement('div');
+            setCircle.className = 'set-square';
+            setCircle.setAttribute('data-set', i);
+            setCircle.setAttribute('data-weight', weight);
+            setCircle.setAttribute('data-reps', reps);
+            
+            // 무게, 횟수 표시
+            setCircle.innerHTML = `
+                <div class="set-weight">${weight}kg</div>
+                <div class="set-divider"></div>
+                <div class="set-reps">${reps}회</div>
+            `;
+            
+            // 클릭 이벤트 추가
+            setCircle.onclick = () => openSetAdjustModal(i, weight, reps);
+            
+            const setTime = document.createElement('div');
+            setTime.className = 'set-time';
+            setTime.id = `set-time-${i}`;
+            setTime.innerHTML = '';
+            
+            setWrapper.appendChild(setCircle);
+            setWrapper.appendChild(setTime);
+            setsContainer.appendChild(setWrapper);
+        }
     }
     
     // 타이머 초기화 및 시작
@@ -1605,12 +1821,30 @@ function resetModalTimer() {
 }
 
 function completeSetAndReset() {
+    // 총 0세트일 때 첫 번째 세트 추가
+    if (modalTotalSets === 0 && modalCompletedSets === 0) {
+        addNewSet(1);
+        modalTotalSets = 1;
+    }
+    
     // 다음 완료할 세트 찾기
     const nextSet = modalCompletedSets + 1;
     
-    if (nextSet <= modalTotalSets) {
-        // 세트 완료 처리
-        completeModalSet(nextSet);
+    // 매번 클릭할 때마다 새로운 세트 추가
+    if (nextSet > modalTotalSets) {
+        addNewSet(nextSet);
+        modalTotalSets = nextSet;
+    }
+    
+    // 세트 완료 처리
+    completeModalSet(nextSet);
+    
+    // 운동 정보의 총 세트 수 업데이트 (실제 총 세트 수 유지)
+    const exerciseInfo = document.getElementById('modalExerciseInfo');
+    const currentText = exerciseInfo.textContent;
+    const matches = currentText.match(/(\d+kg × \d+회) × (\d+)세트/);
+    if (matches) {
+        exerciseInfo.textContent = `${matches[1]} × ${modalTotalSets}세트`;
     }
     
     // 모든 세트에서 타이머 리셋 (마지막 세트도 동일하게)
@@ -1629,6 +1863,53 @@ function updateModalTimer() {
     
     const modalContent = document.querySelector('.workout-modal');
     modalContent.style.setProperty('background-color', colors[colorIndex], 'important');
+}
+
+// 새 세트 추가 함수
+function addNewSet(setNumber, weight = null, reps = null) {
+    const setsContainer = document.getElementById('modalSetsContainer');
+    
+    // 기존 시작 메시지 제거
+    const startMessage = setsContainer.querySelector('.start-set-message');
+    if (startMessage) {
+        startMessage.parentElement.remove();
+    }
+    
+    // 무게, 횟수가 제공되지 않으면 운동 정보에서 가져오기
+    if (weight === null || reps === null) {
+        const exerciseInfo = document.getElementById('modalExerciseInfo').textContent;
+        const matches = exerciseInfo.match(/(\d+)kg × (\d+)회/);
+        weight = matches ? parseInt(matches[1]) : 0;
+        reps = matches ? parseInt(matches[2]) : 0;
+    }
+    
+    const setWrapper = document.createElement('div');
+    setWrapper.className = 'set-wrapper';
+    
+    const setCircle = document.createElement('div');
+    setCircle.className = 'set-square';
+    setCircle.setAttribute('data-set', setNumber);
+    setCircle.setAttribute('data-weight', weight);
+    setCircle.setAttribute('data-reps', reps);
+    
+    // 무게, 횟수 표시
+    setCircle.innerHTML = `
+        <div class="set-weight">${weight}kg</div>
+        <div class="set-divider"></div>
+        <div class="set-reps">${reps}회</div>
+    `;
+    
+    // 클릭 이벤트 추가
+    setCircle.onclick = () => openSetAdjustModal(setNumber, weight, reps);
+    
+    const setTime = document.createElement('div');
+    setTime.className = 'set-time';
+    setTime.id = `set-time-${setNumber}`;
+    setTime.innerHTML = '';
+    
+    setWrapper.appendChild(setCircle);
+    setWrapper.appendChild(setTime);
+    setsContainer.appendChild(setWrapper);
 }
 
 // 모달 세트 완료 처리
@@ -2048,13 +2329,16 @@ function applySetAdjustment() {
 
 // 세트 조정 데이터베이스 저장
 function saveSetAdjustment(sessionId, setNumber, weight, reps) {
+    // 현재 운동 ID 가져오기
+    const exerciseId = modalExerciseId;
+    
     fetch('', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'X-Requested-With': 'XMLHttpRequest'
         },
-        body: `action=update_set_data&session_id=${sessionId}&set_number=${setNumber}&weight=${weight}&reps=${reps}`
+        body: `action=update_set_data&wx_id=${exerciseId}&weight=${weight}&reps=${reps}`
     })
     .then(response => response.json())
     .then(data => {
@@ -2074,27 +2358,46 @@ function saveSetAdjustment(sessionId, setNumber, weight, reps) {
 // 운동 기록 저장 함수
 function saveWorkoutRecord() {
     const setTimes = [];
+    const setData = []; // 각 세트의 무게, 횟수 정보
     
-    // 각 세트의 완료 시간 수집
-    for (let i = 1; i <= modalCompletedSets; i++) {
-        const setTimeElement = document.querySelector(`[data-set="${i}"] + .set-time`);
+    // 모든 완료된 세트 수집 (기존 완료된 세트 + 새로 완료된 세트)
+    const allCompletedSets = document.querySelectorAll('.set-square.completed');
+    
+    allCompletedSets.forEach((setCircle, index) => {
+        const setNo = parseInt(setCircle.getAttribute('data-set')) || (index + 1);
+        const setTimeElement = document.getElementById(`set-time-${setNo}`);
+        
+        let time = 0;
+        let weight = 0;
+        let reps = 0;
+        
         if (setTimeElement && setTimeElement.textContent) {
             const timeText = setTimeElement.textContent.replace('초', '');
-            setTimes.push(parseInt(timeText) || 0);
-        } else {
-            setTimes.push(0);
+            time = parseInt(timeText) || 0;
         }
-    }
+        
+        if (setCircle) {
+            weight = parseInt(setCircle.getAttribute('data-weight')) || 0;
+            reps = parseInt(setCircle.getAttribute('data-reps')) || 0;
+        }
+        
+        setTimes.push(time);
+        setData.push({ weight, reps, time });
+    });
     
     // 세트별 시간을 모두 합해서 총 운동 시간 계산
     const total_time = setTimes.reduce((sum, time) => sum + time, 0);
+    
+    // 실제 완료된 세트 수로 업데이트
+    modalCompletedSets = allCompletedSets.length;
     
     const data = {
         wx_id: modalExerciseId,
         completed_sets: modalCompletedSets,
         total_sets: modalTotalSets,
         total_time: total_time, // 세트별 시간의 합
-        set_times: setTimes
+        set_times: setTimes,
+        set_data: setData // 각 세트의 무게, 횟수 정보
     };
     
     console.log('운동 기록 저장:', data);
@@ -2127,10 +2430,357 @@ function saveWorkoutRecord() {
 // 기록 없이 닫기
 function closeModalWithoutSave() {
     if (confirm('운동 기록 없이 종료하시겠습니까?')) {
-        alert('운동 기록 없이 종료되었습니다.');
         bootstrap.Modal.getInstance(document.getElementById('exerciseModal')).hide();
     }
 }
+
+// 완료된 운동 로드
+function loadCompletedExercise(wxId) {
+    // AJAX로 완료된 운동 데이터 가져오기
+    fetch('', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: `action=get_completed_exercise&wx_id=${wxId}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 운동 모달 열기
+            openExerciseModal(data.exercise.wx_id, data.exercise.name_kr, data.exercise.weight, data.exercise.reps, data.exercise.sets);
+            
+            // 완료된 세트들 로드
+            loadCompletedSets(data.sets);
+        } else {
+            showMessage('완료된 운동 데이터를 불러올 수 없습니다.', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showMessage('완료된 운동 데이터 로드 중 오류가 발생했습니다.', 'error');
+    });
+}
+
+// 완료된 세트들 로드
+function loadCompletedSets(sets) {
+    const setsContainer = document.getElementById('modalSetsContainer');
+    setsContainer.innerHTML = '';
+    
+    if (sets && sets.length > 0) {
+        // 완료된 세트들 표시
+        sets.forEach((set, index) => {
+            const setWrapper = document.createElement('div');
+            setWrapper.className = 'set-wrapper';
+            
+            const setCircle = document.createElement('div');
+            setCircle.className = 'set-square completed';
+            setCircle.setAttribute('data-set', set.set_no);
+            setCircle.setAttribute('data-weight', set.weight);
+            setCircle.setAttribute('data-reps', set.reps);
+            
+            // 완료된 세트 표시
+            setCircle.innerHTML = `
+                <div class="set-weight">${Math.floor(set.weight)}kg</div>
+                <div class="set-divider"></div>
+                <div class="set-reps">${set.reps}회</div>
+            `;
+            
+            setWrapper.appendChild(setCircle);
+            
+            // 시간을 별도 div로 추가 (마지막 세트와 동일한 구조)
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'set-time';
+            timeDiv.id = `set-time-${set.set_no}`;
+            timeDiv.textContent = `${Math.floor(set.rest_time)}초`;
+            
+            setWrapper.appendChild(timeDiv);
+            setsContainer.appendChild(setWrapper);
+        });
+        
+        // 미완료 세트들도 미리 생성 (총 세트 수만큼)
+        for (let i = sets.length + 1; i <= modalTotalSets; i++) {
+            addNewSet(i, sets[0].weight, sets[0].reps); // 첫 번째 세트의 무게/횟수 사용
+        }
+        
+        // 완료된 세트 수 업데이트
+        modalCompletedSets = sets.length;
+    }
+}
+
+// 시간 포맷팅 (초를 mm:ss로)
+function formatTime(seconds) {
+    if (!seconds) return '0:00';
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+}
+
+// 운동 정보 수정 모달 열기
+function openExerciseInfoModal() {
+    // 현재 운동 정보에서 무게, 횟수, 세트 추출
+    const exerciseInfo = document.getElementById('modalExerciseInfo').textContent;
+    const matches = exerciseInfo.match(/(\d+)kg × (\d+)회 × (\d+)세트/);
+    
+    let weight = 0, reps = 0, sets = 0;
+    if (matches) {
+        weight = parseInt(matches[1]);
+        reps = parseInt(matches[2]);
+        sets = parseInt(matches[3]);
+    }
+    
+    // 슬라이더와 디스플레이 업데이트
+    document.getElementById('exerciseWeightSlider').value = weight;
+    document.getElementById('exerciseRepsSlider').value = reps;
+    document.getElementById('exerciseSetsSlider').value = sets;
+    document.getElementById('exerciseWeightDisplay').textContent = `${weight}kg`;
+    document.getElementById('exerciseRepsDisplay').textContent = `${reps}회`;
+    document.getElementById('exerciseSetsDisplay').textContent = `${sets}세트`;
+    
+    // modalExerciseId는 이미 openExerciseModal에서 설정됨
+    
+    const modal = new bootstrap.Modal(document.getElementById('exerciseInfoModal'));
+    modal.show();
+}
+
+// 운동 정보 값 조정 함수
+function adjustExerciseValue(type, change) {
+    const slider = document.getElementById(`exercise${type.charAt(0).toUpperCase() + type.slice(1)}Slider`);
+    const display = document.getElementById(`exercise${type.charAt(0).toUpperCase() + type.slice(1)}Display`);
+    const currentValue = parseInt(slider.value) || 0;
+    const newValue = Math.max(0, currentValue + change);
+    
+    slider.value = newValue;
+    if (type === 'weight') {
+        display.textContent = `${newValue}kg`;
+    } else if (type === 'reps') {
+        display.textContent = `${newValue}회`;
+    } else if (type === 'sets') {
+        display.textContent = `${newValue}세트`;
+    }
+    
+    // 값이 변경되면 UI만 업데이트 (저장은 적용 버튼에서)
+}
+
+// 운동 정보 슬라이더 값 변경 시 디스플레이 업데이트
+function updateExerciseWeightDisplay(value) {
+    document.getElementById('exerciseWeightDisplay').textContent = `${value}kg`;
+}
+
+function updateExerciseRepsDisplay(value) {
+    document.getElementById('exerciseRepsDisplay').textContent = `${value}회`;
+}
+
+function updateExerciseSetsDisplay(value) {
+    document.getElementById('exerciseSetsDisplay').textContent = `${value}세트`;
+}
+
+// 운동 정보 조정 적용
+function applyExerciseInfoAdjustment() {
+    const newWeight = parseFloat(document.getElementById('exerciseWeightSlider').value) || 0;
+    const newReps = parseInt(document.getElementById('exerciseRepsSlider').value) || 0;
+    const newSets = parseInt(document.getElementById('exerciseSetsSlider').value) || 0;
+    
+    // 디버그: 전송할 데이터 확인
+    console.log('modalExerciseId 값:', modalExerciseId);
+    console.log('전송할 데이터:', {
+        action: 'update_exercise_info',
+        wx_id: modalExerciseId,
+        weight: newWeight,
+        reps: newReps,
+        sets: newSets
+    });
+    
+    // modalExerciseId가 없으면 에러
+    if (!modalExerciseId) {
+        showMessage('운동 ID가 설정되지 않았습니다.', 'error');
+        return;
+    }
+    
+    // 데이터베이스에 저장
+    fetch('', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: `action=update_exercise_info&wx_id=${modalExerciseId}&weight=${newWeight}&reps=${newReps}&sets=${newSets}`
+    })
+    .then(response => {
+        console.log('Response status:', response.status);
+        return response.json();
+    })
+    .then(data => {
+        console.log('Response data:', data);
+        console.log('modalExerciseId:', modalExerciseId);
+        console.log('newWeight:', newWeight, 'newReps:', newReps, 'newSets:', newSets);
+        
+        
+        if (data.success) {
+            // 운동 정보 버튼 텍스트 업데이트
+            const exerciseInfoButton = document.getElementById('modalExerciseInfo');
+            exerciseInfoButton.innerHTML = `<i class="fas fa-edit"></i> ${newWeight}kg × ${newReps}회 × ${newSets}세트`;
+            
+            // modalTotalSets 업데이트
+            modalTotalSets = newSets;
+            
+            // 기존 세트들 업데이트 (수행된 내용 유지)
+            const setsContainer = document.getElementById('modalSetsContainer');
+            const existingSets = setsContainer.querySelectorAll('.set-wrapper');
+            
+            if (newSets > 0) {
+                // 기존 세트들 업데이트
+                existingSets.forEach((setWrapper, index) => {
+                    const setSquare = setWrapper.querySelector('.set-square');
+                    if (setSquare && index < newSets) {
+                        // 무게와 횟수 업데이트
+                        const weightElement = setSquare.querySelector('.set-weight');
+                        const repsElement = setSquare.querySelector('.set-reps');
+                        
+                        if (weightElement) weightElement.textContent = `${newWeight}kg`;
+                        if (repsElement) repsElement.textContent = `${newReps}회`;
+                        
+                        // data 속성 업데이트
+                        setSquare.setAttribute('data-weight', newWeight);
+                        setSquare.setAttribute('data-reps', newReps);
+                    }
+                });
+                
+                // 세트 수가 늘어난 경우 추가 세트 생성
+                if (newSets > existingSets.length) {
+                    for (let i = existingSets.length + 1; i <= newSets; i++) {
+                        addNewSet(i, newWeight, newReps);
+                    }
+                }
+                // 세트 수가 줄어든 경우 초과 세트 제거
+                else if (newSets < existingSets.length) {
+                    for (let i = newSets; i < existingSets.length; i++) {
+                        existingSets[i].remove();
+                    }
+                }
+            } else {
+                // 0세트일 때 모든 세트 제거하고 시작 메시지 표시
+                setsContainer.innerHTML = '';
+                const startSetWrapper = document.createElement('div');
+                startSetWrapper.className = 'set-wrapper';
+                startSetWrapper.style.textAlign = 'center';
+                
+                const startSetMessage = document.createElement('div');
+                startSetMessage.className = 'start-set-message';
+                startSetMessage.innerHTML = `
+                    <div style="color: white; font-size: 16px; margin-bottom: 10px;">
+                        초를 클릭하여 첫 번째 세트 시작
+                    </div>
+                    <div style="color: #ccc; font-size: 14px;">
+                        운동을 시작하려면 타이머를 클릭하세요
+                    </div>
+                `;
+                
+                startSetWrapper.appendChild(startSetMessage);
+                setsContainer.appendChild(startSetWrapper);
+            }
+            
+            // 완료된 세트 수 초기화
+            modalCompletedSets = 0;
+            
+            // 원래 운동 리스트의 해당 운동 정보도 업데이트
+            updateOriginalExerciseList(modalExerciseId, newWeight, newReps, newSets);
+            
+            // 성공 메시지 표시
+            showMessage(data.message || '운동 정보가 성공적으로 저장되었습니다.', 'success');
+            
+            // 모달 닫기
+            bootstrap.Modal.getInstance(document.getElementById('exerciseInfoModal')).hide();
+        } else {
+            showMessage('운동 정보 저장에 실패했습니다: ' + data.message, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showMessage('운동 정보 저장 중 오류가 발생했습니다.', 'error');
+    });
+}
+
+// 운동 정보 데이터베이스 저장
+function saveExerciseInfo(wxId, weight, reps, sets) {
+    fetch('', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: `action=update_exercise_info&wx_id=${wxId}&weight=${weight}&reps=${reps}&sets=${sets}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('운동 정보가 성공적으로 저장되었습니다.');
+        } else {
+            console.error('운동 정보 저장 실패:', data.message);
+            showMessage('운동 정보 저장에 실패했습니다.', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showMessage('운동 정보 저장 중 오류가 발생했습니다.', 'error');
+    });
+}
+
+// 원래 운동 리스트의 해당 운동 정보 업데이트
+function updateOriginalExerciseList(exerciseId, weight, reps, sets) {
+    console.log('updateOriginalExerciseList 호출됨:', exerciseId, weight, reps, sets);
+    
+    // 저장된 현재 운동 정보 업데이트
+    if (window.currentExerciseInfo && window.currentExerciseInfo.id === exerciseId) {
+        window.currentExerciseInfo.weight = weight;
+        window.currentExerciseInfo.reps = reps;
+        window.currentExerciseInfo.sets = sets;
+    }
+    
+    // 모든 운동 링크를 찾아서 해당 운동 정보 업데이트
+    const exerciseButtons = document.querySelectorAll('.exercise-row a[onclick*="openExerciseModal"]');
+    let found = false;
+    
+    exerciseButtons.forEach((button, index) => {
+        const onclickAttr = button.getAttribute('onclick');
+        if (!onclickAttr) return; // onclick 속성이 없으면 건너뛰기
+        
+        const match = onclickAttr.match(/openExerciseModal\((\d+),/);
+        
+        if (match && parseInt(match[1]) === exerciseId) {
+            found = true;
+            console.log(`운동 ${exerciseId} 찾음, 업데이트 중...`);
+            
+            // 운동 정보 텍스트 업데이트 (a 태그 안의 small 태그)
+            const exerciseInfoElement = button.querySelector('small.text-muted');
+            if (exerciseInfoElement) {
+                exerciseInfoElement.innerHTML = `${weight}kg × ${reps}회 × ${sets}세트`;
+                console.log('운동 정보 텍스트 업데이트 완료');
+            }
+            
+            // onclick 속성 업데이트
+            const exerciseNameElement = button.querySelector('strong');
+            const exerciseName = exerciseNameElement ? exerciseNameElement.textContent.trim() : '';
+            button.setAttribute('onclick', `openExerciseModal(${exerciseId}, '${exerciseName}', ${weight}, ${reps}, ${sets})`);
+            console.log('onclick 속성 업데이트 완료');
+        }
+    });
+    
+    if (!found) {
+        console.log('운동을 찾을 수 없음. 모든 운동 ID 확인:');
+        exerciseButtons.forEach((button, index) => {
+            const onclickAttr = button.getAttribute('onclick');
+            if (onclickAttr) {
+                const match = onclickAttr.match(/openExerciseModal\((\d+),/);
+                if (match) {
+                    console.log(`링크 ${index}: wx_id = ${match[1]}`);
+                }
+            }
+        });
+    }
+}
+
 
 </script>
 
@@ -2218,6 +2868,15 @@ function closeModalWithoutSave() {
 
 #addExerciseModal .modal-backdrop {
     z-index: 1069 !important;
+}
+
+/* 운동 정보 수정 모달 z-index 설정 */
+#exerciseInfoModal {
+    z-index: 1080 !important;
+}
+
+#exerciseInfoModal .modal-backdrop {
+    z-index: 1079 !important;
 }
 
 /* 세트 조정 모달 z-index 설정 */
@@ -2359,6 +3018,18 @@ function closeModalWithoutSave() {
     line-height: 1.6;
     font-size: 14px;
     color: #333;
+}
+
+/* 시작 세트 메시지 스타일 */
+.start-set-message {
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px dashed rgba(255, 255, 255, 0.3);
+    border-radius: 15px;
+    padding: 20px;
+    margin: 10px 0;
+    text-align: center;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
 /* 진행률 바에 그림자 효과 */

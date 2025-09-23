@@ -24,6 +24,7 @@ try {
     $total_sets = $input['total_sets'] ?? 0;
     $total_time = $input['total_time'] ?? 0; // 총 운동 시간(초)
     $set_times = $input['set_times'] ?? []; // 각 세트별 완료 시간
+    $set_data = $input['set_data'] ?? []; // 각 세트별 무게, 횟수 정보
     
     if (!$wx_id) {
         throw new Exception('운동 ID가 필요합니다.');
@@ -50,9 +51,20 @@ try {
     $reps = $exercise['reps'];
     $planned_sets = $exercise['sets'];
     
+    // 운동의 sets 값을 실제 완료된 세트 수로 업데이트
+    if ($total_sets > 0) {
+        $stmt = $pdo->prepare("UPDATE m_workout_exercise SET sets = ? WHERE wx_id = ?");
+        $stmt->execute([$total_sets, $wx_id]);
+    }
+    
     // 완료된 세트만큼 기록 저장
     for ($i = 1; $i <= $completed_sets; $i++) {
         $set_time = isset($set_times[$i-1]) ? $set_times[$i-1] : 0;
+        $set_info = isset($set_data[$i-1]) ? $set_data[$i-1] : [];
+        
+        // 각 세트별 무게, 횟수 사용 (없으면 기본값 사용)
+        $set_weight = isset($set_info['weight']) ? $set_info['weight'] : $weight;
+        $set_reps = isset($set_info['reps']) ? $set_info['reps'] : $reps;
         
         // 세트 아래에 찍힌 숫자를 그대로 rest_time으로 사용
         $rest_time = $set_time;
@@ -62,7 +74,7 @@ try {
             (wx_id, set_no, weight, reps, completed_at, rest_time, total_time) 
             VALUES (?, ?, ?, ?, NOW(), ?, ?)
         ");
-        $stmt->execute([$wx_id, $i, $weight, $reps, $rest_time, $total_time]);
+        $stmt->execute([$wx_id, $i, $set_weight, $set_reps, $rest_time, $total_time]);
     }
     
     $pdo->commit();
