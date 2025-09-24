@@ -173,6 +173,37 @@ if ($_POST) {
                 $reps = $_POST['reps'];
                 $sets = $_POST['sets'];
                 
+                // wx_id 존재 여부 확인
+                $stmt = $pdo->prepare("SELECT wx_id, session_id FROM m_workout_exercise WHERE wx_id = ?");
+                $stmt->execute([$wx_id]);
+                $exercise_exists = $stmt->fetch();
+                
+                if (!$exercise_exists) {
+                    // 현재 사용자의 모든 운동 ID 확인
+                    $stmt = $pdo->prepare("
+                        SELECT we.wx_id, we.session_id, ws.user_id 
+                        FROM m_workout_exercise we
+                        JOIN m_workout_session ws ON we.session_id = ws.session_id
+                        WHERE ws.user_id = ?
+                        ORDER BY we.wx_id DESC
+                        LIMIT 10
+                    ");
+                    $stmt->execute([$user['id']]);
+                    $user_exercises = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    
+                    $exercise_list = [];
+                    foreach ($user_exercises as $ex) {
+                        $exercise_list[] = "wx_id: {$ex['wx_id']} (session: {$ex['session_id']})";
+                    }
+                    
+                    echo json_encode([
+                        'success' => false, 
+                        'message' => "운동이 존재하지 않습니다. wx_id: $wx_id, user_id: {$user['id']}",
+                        'available_exercises' => $exercise_list
+                    ]);
+                    exit;
+                }
+                
                 // 사용자 권한 확인
                 $stmt = $pdo->prepare("
                     SELECT ws.user_id 
@@ -183,7 +214,7 @@ if ($_POST) {
                 $stmt->execute([$wx_id, $user['id']]);
                 $auth_result = $stmt->fetch();
                 if (!$auth_result) {
-                    echo json_encode(['success' => false, 'message' => "권한이 없습니다. wx_id: $wx_id, user_id: " . $user['id']]);
+                    echo json_encode(['success' => false, 'message' => "권한이 없습니다. wx_id: $wx_id, user_id: " . $user['id'] . ", session_id: " . $exercise_exists['session_id']]);
                     exit;
                 }
                 
@@ -198,12 +229,12 @@ if ($_POST) {
                 $sets = (int)$sets;
                 
                 // 운동 정보 업데이트
-                $update_query = "UPDATE m_workout_exercise SET weight = $weight, reps = $reps, sets = $sets WHERE wx_id = $wx_id";
                 $stmt = $pdo->prepare("UPDATE m_workout_exercise SET weight = ?, reps = ?, sets = ? WHERE wx_id = ?");
                 $result = $stmt->execute([$weight, $reps, $sets, $wx_id]);
                 
                 // 디버깅: 업데이트 결과 확인
                 $affected_rows = $stmt->rowCount();
+                error_log("업데이트 시도 - wx_id: $wx_id, weight: $weight, reps: $reps, sets: $sets, result: " . ($result ? 'true' : 'false') . ", affected_rows: $affected_rows");
                 
                 // 업데이트 후 값 확인
                 $stmt = $pdo->prepare("SELECT weight, reps, sets FROM m_workout_exercise WHERE wx_id = ?");
@@ -1672,9 +1703,12 @@ function togglePartDetails(partName) {
             </div>
             <div class="modal-body">
                 <!-- 운동 정보 -->
-                <div class="exercise-info mb-4 text-center">
-                    <button type="button" class="btn btn-outline-primary btn-lg" id="modalExerciseInfo" onclick="openExerciseInfoModal()">
+                <div class="exercise-info mb-4 text-center position-relative">
+                    <button type="button" class="btn btn-outline-light btn-lg" id="modalExerciseInfo" onclick="openExerciseInfoModal()" style="pointer-events: auto; transition: none !important; background-color: transparent !important; border-color: #fff !important; color: #fff !important;">
                         <i class="fas fa-edit"></i> 20kg × 15회 × 5세트
+                    </button>
+                    <button type="button" class="btn btn-outline-light btn-lg position-absolute end-0" id="undoSetBtn" onclick="undoLastSet()" style="display: none; top: 50%; transform: translateY(-50%); position: absolute !important; pointer-events: auto; transition: none !important; background-color: transparent !important; border-color: #fff !important; color: #fff !important;">
+                        <i class="fas fa-backspace"></i>
                     </button>
                 </div>
                 
@@ -1784,6 +1818,9 @@ function openExerciseModal(exerciseId, exerciseName, weight, reps, sets) {
             setWrapper.appendChild(setTime);
             setsContainer.appendChild(setWrapper);
         }
+        
+        // 백스페이스 버튼 가시성 초기화
+        updateUndoButtonVisibility();
     }
     
     // 타이머 초기화 및 시작
@@ -1821,6 +1858,9 @@ function resetModalTimer() {
 }
 
 function completeSetAndReset() {
+    // 디버깅: 현재 상태 확인
+    console.log('completeSetAndReset 호출 - modalTotalSets:', modalTotalSets, 'modalCompletedSets:', modalCompletedSets);
+    
     // 총 0세트일 때 첫 번째 세트 추가
     if (modalTotalSets === 0 && modalCompletedSets === 0) {
         addNewSet(1);
@@ -1829,14 +1869,22 @@ function completeSetAndReset() {
     
     // 다음 완료할 세트 찾기
     const nextSet = modalCompletedSets + 1;
+    console.log('다음 완료할 세트:', nextSet);
     
-    // 매번 클릭할 때마다 새로운 세트 추가
+    // modalTotalSets가 0이거나 음수인 경우 기본값 설정
+    if (modalTotalSets <= 0) {
+        modalTotalSets = 1;
+    }
+    
+    // 다음 세트가 총 세트 수를 초과하는 경우, 총 세트 수를 늘림
     if (nextSet > modalTotalSets) {
+        console.log('새 세트 추가:', nextSet);
         addNewSet(nextSet);
         modalTotalSets = nextSet;
     }
     
     // 세트 완료 처리
+    console.log('세트 완료 처리:', nextSet);
     completeModalSet(nextSet);
     
     // 운동 정보의 총 세트 수 업데이트 (실제 총 세트 수 유지)
@@ -1849,6 +1897,57 @@ function completeSetAndReset() {
     
     // 모든 세트에서 타이머 리셋 (마지막 세트도 동일하게)
     resetModalTimer();
+    
+    // 백스페이스 버튼 표시
+    updateUndoButtonVisibility();
+    
+    console.log('세트 완료 후 - modalTotalSets:', modalTotalSets, 'modalCompletedSets:', modalCompletedSets);
+}
+
+// 마지막 세트 취소 함수
+function undoLastSet() {
+    if (modalCompletedSets <= 0) {
+        return; // 취소할 세트가 없음
+    }
+    
+    // 마지막 완료된 세트 찾기
+    const completedSets = document.querySelectorAll('.set-square.completed');
+    if (completedSets.length === 0) {
+        return;
+    }
+    
+    const lastCompletedSet = completedSets[completedSets.length - 1];
+    const setNumber = parseInt(lastCompletedSet.getAttribute('data-set'));
+    
+    // 세트 완료 상태 취소
+    lastCompletedSet.classList.remove('completed');
+    
+    // 시간 표시 초기화
+    const setTime = document.getElementById(`set-time-${setNumber}`);
+    if (setTime) {
+        setTime.textContent = '';
+    }
+    
+    // 완료된 세트 수 감소
+    modalCompletedSets--;
+    
+    // 타이머 리셋
+    resetModalTimer();
+    
+    // 백스페이스 버튼 가시성 업데이트
+    updateUndoButtonVisibility();
+    
+    console.log('세트 취소 완료 - modalCompletedSets:', modalCompletedSets);
+}
+
+// 백스페이스 버튼 가시성 업데이트
+function updateUndoButtonVisibility() {
+    const undoBtn = document.getElementById('undoSetBtn');
+    if (modalCompletedSets > 0) {
+        undoBtn.style.display = 'inline-block';
+    } else {
+        undoBtn.style.display = 'none';
+    }
 }
 
 function updateModalTimer() {
@@ -1916,6 +2015,32 @@ function addNewSet(setNumber, weight = null, reps = null) {
 function completeModalSet(setNumber) {
     const setCircle = document.querySelector(`[data-set="${setNumber}"]`);
     const setTime = document.getElementById(`set-time-${setNumber}`);
+    
+    // 세트 요소가 존재하지 않는 경우 새로 생성
+    if (!setCircle) {
+        addNewSet(setNumber);
+        const newSetCircle = document.querySelector(`[data-set="${setNumber}"]`);
+        const newSetTime = document.getElementById(`set-time-${setNumber}`);
+        
+        if (newSetCircle && newSetTime) {
+            // 이미 완료된 세트인지 확인
+            if (newSetCircle.classList.contains('completed')) {
+                return; // 이미 완료된 세트는 무시
+            }
+            
+            // 현재 타이머 시간 가져오기
+            const currentTime = document.getElementById('modalTimer').textContent;
+            
+            // 세트 완료 표시
+            newSetCircle.classList.add('completed');
+            
+            // 시간 표시
+            newSetTime.textContent = currentTime + '초';
+            
+            modalCompletedSets++;
+        }
+        return;
+    }
     
     // 이미 완료된 세트인지 확인
     if (setCircle.classList.contains('completed')) {
@@ -2623,7 +2748,18 @@ function applyExerciseInfoAdjustment() {
             exerciseInfoButton.innerHTML = `<i class="fas fa-edit"></i> ${newWeight}kg × ${newReps}회 × ${newSets}세트`;
             
             // modalTotalSets 업데이트
+            console.log('운동 정보 업데이트 전 - modalTotalSets:', modalTotalSets, 'modalCompletedSets:', modalCompletedSets);
             modalTotalSets = newSets;
+            
+            // modalCompletedSets 조정 (새로운 총 세트 수에 맞게 조정)
+            if (modalCompletedSets > modalTotalSets) {
+                modalCompletedSets = modalTotalSets;
+            }
+            // 새로운 세트 수가 0이면 완료된 세트 수도 0으로 설정
+            else if (modalTotalSets === 0) {
+                modalCompletedSets = 0;
+            }
+            console.log('운동 정보 업데이트 후 - modalTotalSets:', modalTotalSets, 'modalCompletedSets:', modalCompletedSets);
             
             // 기존 세트들 업데이트 (수행된 내용 유지)
             const setsContainer = document.getElementById('modalSetsContainer');
@@ -2681,8 +2817,28 @@ function applyExerciseInfoAdjustment() {
                 setsContainer.appendChild(startSetWrapper);
             }
             
-            // 완료된 세트 수 초기화
-            modalCompletedSets = 0;
+            // 완료된 세트들의 상태를 새로운 세트 수에 맞게 조정
+            if (modalTotalSets > 0) {
+                // 기존 완료된 세트들 중 새로운 세트 수를 초과하는 것들을 미완료로 변경
+                const completedSets = setsContainer.querySelectorAll('.set-square.completed');
+                completedSets.forEach((setSquare, index) => {
+                    const setNumber = parseInt(setSquare.getAttribute('data-set'));
+                    if (setNumber > modalTotalSets) {
+                        setSquare.classList.remove('completed');
+                        const setTime = document.getElementById(`set-time-${setNumber}`);
+                        if (setTime) {
+                            setTime.textContent = '';
+                        }
+                    }
+                });
+                
+                // modalCompletedSets를 실제 완료된 세트 수로 재계산
+                modalCompletedSets = setsContainer.querySelectorAll('.set-square.completed').length;
+                console.log('완료된 세트 수 재계산 후 - modalCompletedSets:', modalCompletedSets);
+                
+                // 백스페이스 버튼 가시성 업데이트
+                updateUndoButtonVisibility();
+            }
             
             // 원래 운동 리스트의 해당 운동 정보도 업데이트
             updateOriginalExerciseList(modalExerciseId, newWeight, newReps, newSets);
@@ -3082,5 +3238,15 @@ function updateOriginalExerciseList(exerciseId, weight, reps, sets) {
     font-weight: 600;
     color: #495057;
     margin-bottom: 5px;
+}
+
+/* 호버 효과 완전 제거 */
+#modalExerciseInfo:hover,
+#undoSetBtn:hover {
+    background-color: transparent !important;
+    border-color: #fff !important;
+    color: #fff !important;
+    transform: none !important;
+    box-shadow: none !important;
 }
 </style>
