@@ -35,6 +35,14 @@ try {
     $stmt = $pdo->query("SELECT COUNT(*) as count FROM m_exercise_muscle_target");
     $stats['muscle_mapping_count'] = $stmt->fetch()['count'];
     
+    // 운동 템플릿 개수 (테이블이 존재하는 경우에만)
+    try {
+        $stmt = $pdo->query("SELECT COUNT(*) as count FROM m_workout_template");
+        $stats['template_count'] = $stmt->fetch()['count'];
+    } catch (Exception $e) {
+        $stats['template_count'] = 0;
+    }
+    
 } catch (Exception $e) {
     $error = "통계 정보를 가져오는 중 오류가 발생했습니다: " . $e->getMessage();
 }
@@ -312,6 +320,22 @@ try {
                                 <i class="fas fa-dumbbell"></i>
                                 운동 관리
                             </a>
+                            <a class="nav-link" href="workout_template_management.php">
+                                <i class="fas fa-clipboard-list"></i>
+                                운동 템플릿 관리
+                            </a>
+                            <a class="nav-link" href="template_assignment.php">
+                                <i class="fas fa-user-plus"></i>
+                                템플릿 할당
+                            </a>
+                            <a class="nav-link" href="schedule_management.php">
+                                <i class="fas fa-calendar-alt"></i>
+                                스케줄 관리
+                            </a>
+                            <a class="nav-link" href="user_workout_history.php">
+                                <i class="fas fa-user-clock"></i>
+                                개인 운동 이력
+                            </a>
                                             <a class="nav-link" href="user_management.php">
                     <i class="fas fa-users"></i>
                     사용자 관리
@@ -425,12 +449,12 @@ try {
                                 <div class="stats-card">
                                     <div class="d-flex justify-content-between align-items-center">
                                         <div>
-                                            <h6 class="text-muted mb-1">매핑</h6>
-                                            <h3 class="mb-0"><?= number_format($stats['zone_mapping_count'] + $stats['muscle_mapping_count']) ?></h3>
-                                            <small class="text-success">+8개</small>
+                                            <h6 class="text-muted mb-1">운동 템플릿</h6>
+                                            <h3 class="mb-0"><?= number_format($stats['template_count']) ?></h3>
+                                            <small class="text-primary">새 기능</small>
                                         </div>
                                         <div class="icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
-                                            <i class="fas fa-link"></i>
+                                            <i class="fas fa-clipboard-list"></i>
                                         </div>
                                     </div>
                                 </div>
@@ -452,8 +476,17 @@ try {
                                             <a href="exercise_management.php" class="btn btn-success">
                                                 <i class="fas fa-dumbbell me-2"></i>운동 관리
                                             </a>
-                                            <a href="#" class="btn btn-info">
-                                                <i class="fas fa-link me-2"></i>매핑 설정
+                                            <a href="workout_template_management.php" class="btn btn-info">
+                                                <i class="fas fa-clipboard-list me-2"></i>운동 템플릿 관리
+                                            </a>
+                                            <a href="template_assignment.php" class="btn btn-success">
+                                                <i class="fas fa-user-plus me-2"></i>템플릿 할당
+                                            </a>
+                                            <a href="schedule_management.php" class="btn btn-warning">
+                                                <i class="fas fa-calendar-alt me-2"></i>스케줄 관리
+                                            </a>
+                                            <a href="user_workout_history.php" class="btn btn-info">
+                                                <i class="fas fa-user-clock me-2"></i>개인 운동 이력
                                             </a>
                                             <a href="#" class="btn btn-warning">
                                                 <i class="fas fa-chart-bar me-2"></i>분석 보기

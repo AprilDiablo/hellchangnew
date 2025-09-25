@@ -18,8 +18,36 @@ $date = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
 $pageTitle = '운동 계획 입력';
 $pageSubtitle = '오늘의 운동 계획을 세워보세요';
 
-// 기존 운동 세션 데이터 가져오기 (최근 30일)
+// 데이터베이스 연결
 $pdo = getDB();
+
+// 할당된 운동 템플릿 확인
+$assignedTemplate = null;
+$stmt = $pdo->prepare('
+    SELECT ta.*, t.template_name, t.description, a.name as admin_name
+    FROM m_template_assignment ta
+    LEFT JOIN m_workout_template t ON ta.template_id = t.template_id
+    LEFT JOIN admins a ON ta.assigned_by = a.id
+    WHERE ta.user_id = ? AND ta.workout_date = ? AND ta.status = "assigned"
+    ORDER BY ta.created_at DESC
+    LIMIT 1
+');
+$stmt->execute([$user['id'], $date]);
+$assignedTemplate = $stmt->fetch(PDO::FETCH_ASSOC);
+
+// 할당된 템플릿의 운동들 가져오기
+$assignedExercises = [];
+if ($assignedTemplate) {
+    $stmt = $pdo->prepare('
+        SELECT * FROM m_workout_template_exercise 
+        WHERE template_id = ? 
+        ORDER BY order_no ASC
+    ');
+    $stmt->execute([$assignedTemplate['template_id']]);
+    $assignedExercises = $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// 기존 운동 세션 데이터 가져오기 (최근 30일)
 $stmt = $pdo->prepare('
     SELECT 
         ws.session_id,
@@ -323,6 +351,63 @@ include 'header.php';
 ?>
 
 
+<?php if ($assignedTemplate): ?>
+<!-- 할당된 운동 템플릿 -->
+<div class="card border-success mb-4">
+    <div class="card-header bg-success text-white">
+        <h4 class="mb-0">
+            <i class="fas fa-gift me-2"></i>할당된 운동
+            <small class="ms-2">by <?= htmlspecialchars($assignedTemplate['admin_name']) ?></small>
+        </h4>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-8">
+                <h5><?= htmlspecialchars($assignedTemplate['template_name']) ?></h5>
+                <?php if ($assignedTemplate['description']): ?>
+                <p class="text-muted"><?= htmlspecialchars($assignedTemplate['description']) ?></p>
+                <?php endif; ?>
+                <?php if ($assignedTemplate['note']): ?>
+                <p class="text-info">
+                    <i class="fas fa-sticky-note me-1"></i>
+                    <?= htmlspecialchars($assignedTemplate['note']) ?>
+                </p>
+                <?php endif; ?>
+            </div>
+            <div class="col-md-4 text-end">
+                <button type="button" class="btn btn-success" onclick="loadAssignedWorkout()">
+                    <i class="fas fa-download me-2"></i>할당된 운동 불러오기
+                </button>
+            </div>
+        </div>
+        
+        <div class="mt-3">
+            <h6>운동 목록:</h6>
+            <div class="row">
+                <?php foreach ($assignedExercises as $index => $exercise): ?>
+                <div class="col-md-6 col-lg-4 mb-2">
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded">
+                        <div>
+                            <?php if ($exercise['is_warmup']): ?>
+                            <span class="badge bg-warning text-dark me-1">웜업</span>
+                            <?php endif; ?>
+                            <strong><?= htmlspecialchars($exercise['exercise_name']) ?></strong>
+                            <small class="text-muted d-block">
+                                <?= $exercise['weight'] ? $exercise['weight'] . 'kg' : '0kg' ?> × 
+                                <?= $exercise['reps'] ? $exercise['reps'] . '회' : '0회' ?> × 
+                                <?= $exercise['sets'] ? $exercise['sets'] . '세트' : '0세트' ?>
+                            </small>
+                        </div>
+                        <span class="badge bg-secondary"><?= $index + 1 ?></span>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- 운동 계획 입력 -->
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -581,6 +666,29 @@ include 'header.php';
 <?php endif; ?>
 
 <script>
+    // 할당된 운동을 텍스트 영역에 불러오기
+    function loadAssignedWorkout() {
+        <?php if ($assignedTemplate && !empty($assignedExercises)): ?>
+        let workoutText = '';
+        <?php foreach ($assignedExercises as $exercise): ?>
+        <?php
+        $warmupPrefix = $exercise['is_warmup'] ? '웜업 ' : '';
+        $weight = $exercise['weight'] ?: 0;
+        $reps = $exercise['reps'] ?: 0;
+        $sets = $exercise['sets'] ?: 0;
+        ?>
+        workoutText += '<?= $warmupPrefix ?><?= addslashes($exercise['exercise_name']) ?> <?= $weight ?> <?= $reps ?> <?= $sets ?>\n';
+        <?php endforeach; ?>
+        
+        document.getElementById('workout_plan').value = workoutText.trim();
+        
+        // 운동 검색 실행
+        document.querySelector('form').submit();
+        <?php else: ?>
+        alert('할당된 운동이 없습니다.');
+        <?php endif; ?>
+    }
+
     // 세션의 모든 운동을 텍스트 영역에 불러오기
     function loadSession(sessionId) {
         // 서버에서 해당 세션의 상세 운동 데이터 가져오기
