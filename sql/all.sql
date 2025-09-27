@@ -2,7 +2,7 @@
 -- 호스트:                          1.234.53.91
 -- 서버 버전:                        10.11.11-MariaDB - MariaDB Server
 -- 서버 OS:                        Linux
--- HeidiSQL 버전:                  12.10.0.7000
+-- HeidiSQL 버전:                  12.7.0.6850
 -- --------------------------------------------------------
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
@@ -827,9 +827,13 @@ CREATE TABLE IF NOT EXISTS `m_template_assignment` (
   CONSTRAINT `fk_assignment_admin` FOREIGN KEY (`assigned_by`) REFERENCES `admins` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_assignment_template` FOREIGN KEY (`template_id`) REFERENCES `m_workout_template` (`template_id`) ON DELETE CASCADE,
   CONSTRAINT `fk_assignment_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='운동 템플릿 할당';
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='운동 템플릿 할당';
 
--- 테이블 데이터 hellchang.m_template_assignment:~0 rows (대략적) 내보내기
+-- 테이블 데이터 hellchang.m_template_assignment:~3 rows (대략적) 내보내기
+INSERT IGNORE INTO `m_template_assignment` (`assignment_id`, `template_id`, `user_id`, `assigned_by`, `workout_date`, `status`, `note`, `created_at`, `updated_at`) VALUES
+	(2, 2, 6, 1, '2025-09-25', 'assigned', '', '2025-09-25 02:16:52', '2025-09-25 02:16:52'),
+	(3, 2, 19, 1, '2025-09-25', 'assigned', '', '2025-09-25 02:23:11', '2025-09-25 02:23:11'),
+	(4, 2, 18, 1, '2025-09-25', 'assigned', '', '2025-09-25 02:23:19', '2025-09-25 02:23:19');
 
 -- 테이블 hellchang.m_template_workout_session 구조 내보내기
 CREATE TABLE IF NOT EXISTS `m_template_workout_session` (
@@ -842,9 +846,12 @@ CREATE TABLE IF NOT EXISTS `m_template_workout_session` (
   KEY `idx_session_id` (`session_id`),
   CONSTRAINT `fk_tws_assignment` FOREIGN KEY (`assignment_id`) REFERENCES `m_template_assignment` (`assignment_id`) ON DELETE CASCADE,
   CONSTRAINT `fk_tws_session` FOREIGN KEY (`session_id`) REFERENCES `m_workout_session` (`session_id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='할당된 템플릿의 운동 세션 연결';
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='할당된 템플릿의 운동 세션 연결';
 
--- 테이블 데이터 hellchang.m_template_workout_session:~0 rows (대략적) 내보내기
+-- 테이블 데이터 hellchang.m_template_workout_session:~2 rows (대략적) 내보내기
+INSERT IGNORE INTO `m_template_workout_session` (`id`, `assignment_id`, `session_id`, `created_at`) VALUES
+	(2, 2, 43, '2025-09-25 02:16:52'),
+	(4, 4, 45, '2025-09-25 02:23:19');
 
 -- 테이블 hellchang.m_temp_exercise 구조 내보내기
 CREATE TABLE IF NOT EXISTS `m_temp_exercise` (
@@ -859,9 +866,9 @@ CREATE TABLE IF NOT EXISTS `m_temp_exercise` (
   KEY `idx_temp_user` (`user_id`),
   KEY `idx_temp_status` (`status`),
   CONSTRAINT `fk_temp_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=24 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=34 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- 테이블 데이터 hellchang.m_temp_exercise:~22 rows (대략적) 내보내기
+-- 테이블 데이터 hellchang.m_temp_exercise:~32 rows (대략적) 내보내기
 INSERT IGNORE INTO `m_temp_exercise` (`temp_ex_id`, `user_id`, `exercise_name`, `status`, `approved_ex_id`, `created_at`, `updated_at`) VALUES
 	(2, 6, '고블린 스쿼트', 'pending', NULL, '2025-09-09 07:01:16', '2025-09-09 07:01:16'),
 	(3, 17, '인클라잉벤치프레스머신', 'pending', NULL, '2025-09-11 08:57:06', '2025-09-11 08:57:06'),
@@ -884,7 +891,17 @@ INSERT IGNORE INTO `m_temp_exercise` (`temp_ex_id`, `user_id`, `exercise_name`, 
 	(20, 18, '랫플다운', 'pending', NULL, '2025-09-24 10:23:05', '2025-09-24 10:23:05'),
 	(21, 19, '랫플다운', 'pending', NULL, '2025-09-24 10:24:37', '2025-09-24 10:24:37'),
 	(22, 19, '티바로우', 'pending', NULL, '2025-09-24 10:24:37', '2025-09-24 10:24:37'),
-	(23, 19, 'T바로우', 'pending', NULL, '2025-09-25 01:17:12', '2025-09-25 01:17:12');
+	(23, 19, 'T바로우', 'pending', NULL, '2025-09-25 01:17:12', '2025-09-25 01:17:12'),
+	(24, 19, '웜업 사이드 레터럴 레이즈', 'pending', NULL, '2025-09-25 08:14:07', '2025-09-25 08:14:07'),
+	(25, 18, '힙스러스트10', 'pending', NULL, '2025-09-26 10:37:51', '2025-09-26 10:37:51'),
+	(26, 18, '고블릿스쿼트', 'pending', NULL, '2025-09-26 10:37:51', '2025-09-26 10:37:51'),
+	(27, 6, '라잉 레그컬', 'pending', NULL, '2025-09-26 10:50:43', '2025-09-26 10:50:43'),
+	(28, 6, '프론레그컬', 'pending', NULL, '2025-09-26 10:58:12', '2025-09-26 10:58:12'),
+	(29, 6, '프론레그컬', 'pending', NULL, '2025-09-26 10:58:14', '2025-09-26 10:58:14'),
+	(30, 6, '프론레그컬', 'pending', NULL, '2025-09-26 10:58:16', '2025-09-26 10:58:16'),
+	(31, 19, '힙쓰러스트', 'pending', NULL, '2025-09-27 06:08:48', '2025-09-27 06:08:48'),
+	(32, 19, '고블릿스쿼트', 'pending', NULL, '2025-09-27 06:08:48', '2025-09-27 06:08:48'),
+	(33, 19, '워킹런지', 'pending', NULL, '2025-09-27 06:08:48', '2025-09-27 06:08:48');
 
 -- 테이블 hellchang.m_workout_exercise 구조 내보내기
 CREATE TABLE IF NOT EXISTS `m_workout_exercise` (
@@ -899,6 +916,7 @@ CREATE TABLE IF NOT EXISTS `m_workout_exercise` (
   `original_exercise_name` varchar(160) DEFAULT NULL COMMENT '사용자가 입력한 원본 운동명',
   `temp_ex_id` int(11) DEFAULT NULL COMMENT '임시 운동 ID',
   `is_temp` tinyint(1) DEFAULT 0 COMMENT '임시 운동 여부',
+  `is_warmup` tinyint(1) DEFAULT 0 COMMENT '웜업 운동 여부',
   PRIMARY KEY (`wx_id`),
   KEY `idx_wx_session` (`session_id`),
   KEY `idx_wx_ex` (`ex_id`),
@@ -906,111 +924,154 @@ CREATE TABLE IF NOT EXISTS `m_workout_exercise` (
   CONSTRAINT `fk_wx_ex` FOREIGN KEY (`ex_id`) REFERENCES `m_exercise` (`ex_id`) ON UPDATE CASCADE,
   CONSTRAINT `fk_wx_session` FOREIGN KEY (`session_id`) REFERENCES `m_workout_session` (`session_id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_wx_temp` FOREIGN KEY (`temp_ex_id`) REFERENCES `m_temp_exercise` (`temp_ex_id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=394 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='세션-운동 목록';
+) ENGINE=InnoDB AUTO_INCREMENT=451 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='세션-운동 목록';
 
--- 테이블 데이터 hellchang.m_workout_exercise:~101 rows (대략적) 내보내기
-INSERT IGNORE INTO `m_workout_exercise` (`wx_id`, `session_id`, `ex_id`, `order_no`, `weight`, `reps`, `sets`, `note`, `original_exercise_name`, `temp_ex_id`, `is_temp`) VALUES
-	(1, 1, 1, 1, NULL, NULL, NULL, NULL, NULL, NULL, 0),
-	(2, 1, 2, 2, NULL, NULL, NULL, NULL, NULL, NULL, 0),
-	(3, 1, 3, 3, NULL, NULL, NULL, NULL, NULL, NULL, 0),
-	(4, 2, 4, 1, 10.00, 15, 5, NULL, '덤벨 프레스', NULL, 0),
-	(5, 2, 12, 2, 20.00, 10, 3, NULL, '바벨 스쿼트', NULL, 0),
-	(6, 2, 3, 3, 5.00, 12, 4, NULL, '라잉 트라이셉스', NULL, 0),
-	(7, 2, 12, 1, 10.00, 15, 5, NULL, '바벨 스쿼트', NULL, 0),
-	(8, 2, 19, 2, 20.00, 10, 3, NULL, '데드 리프트', NULL, 0),
-	(9, 4, 4, 1, 10.00, 15, 2, NULL, '덤벨 벤치 프레스', NULL, 0),
-	(10, 4, 12, 2, 20.00, 10, 1, NULL, '바벨 스쿼트', NULL, 0),
-	(11, 4, 3, 3, 5.00, 12, 8, NULL, '라잉 트라이셉스 익스텐션', NULL, 0),
-	(49, 10, 6, 1, 20.00, 12, 5, NULL, '바벨 벤치 프레스', NULL, 0),
-	(50, 10, 9, 2, 60.00, 10, 3, NULL, '딥스', NULL, 0),
-	(51, 10, 53, 3, 30.00, 15, 4, NULL, '펙덱플라이', NULL, 0),
-	(52, 10, 5, 4, 20.00, 12, 5, NULL, '인클라인 바벨 벤치 프레스', NULL, 0),
-	(53, 10, 52, 5, 20.00, 15, 4, NULL, '버티컬 체스트', NULL, 0),
-	(54, 10, 44, 6, 20.00, 15, 3, NULL, '케이블 익스텐션', NULL, 0),
-	(95, 21, 56, 1, 20.00, 15, 5, NULL, '암 풀 다운', NULL, 0),
-	(96, 21, 57, 2, 60.00, 12, 5, NULL, '어시스트 풀업', NULL, 0),
-	(97, 21, 58, 3, 30.00, 15, 4, NULL, '랫 풀 다운', NULL, 0),
-	(98, 21, 20, 4, 20.00, 15, 4, NULL, '바벨로우', NULL, 0),
-	(99, 21, 59, 5, 35.00, 20, 4, NULL, '시티드 로우', NULL, 0),
-	(100, 21, 60, 6, 20.00, 12, 4, NULL, '바벨컬', NULL, 0),
-	(101, 21, 61, 7, 15.00, 15, 3, NULL, '인클라인 덤벨컬', NULL, 0),
-	(143, 27, 28, 1, 20.00, 12, 4, NULL, '바벨 오버헤드 프레스', NULL, 0),
-	(144, 27, 29, 2, 10.00, 20, 4, NULL, '덤벨 숄더 프레스', NULL, 0),
-	(145, 27, 35, 3, 15.00, 12, 4, NULL, '바벨 업라이트 로우', NULL, 0),
-	(146, 27, 30, 4, 5.00, 15, 5, NULL, '사이드 레터럴 레이즈', NULL, 0),
-	(147, 27, 32, 5, 10.00, 15, 4, NULL, '리어 델트 플라이', NULL, 0),
-	(148, 27, 62, 6, 10.00, 15, 5, NULL, '벤트 오버 레터럴 레이즈', NULL, 0),
-	(149, 27, 33, 7, 10.00, 12, 3, NULL, '바벨 슈러그', NULL, 0),
-	(150, 28, 14, 1, 20.00, 20, 5, NULL, '레그 익스텐션', NULL, 0),
-	(151, 28, 63, 2, 20.00, 10, 4, NULL, '바벨 백 스쿼트', NULL, 0),
-	(152, 28, 64, 3, 130.00, 10, 4, NULL, '파워 레그프레스', NULL, 0),
-	(153, 28, 16, 4, 0.00, 10, 4, NULL, '런지', NULL, 0),
-	(154, 28, 65, 5, 10.00, 20, 3, NULL, '아웃타이', NULL, 0),
-	(155, 28, 67, 6, 10.00, 15, 3, NULL, '힙스러스트', NULL, 0),
-	(156, 28, 68, 7, 10.00, 15, 3, NULL, '어덕션', NULL, 0),
-	(178, 30, NULL, 1, 20.00, 15, 5, NULL, '딥스 5세트', 10, 1),
-	(179, 30, 4, 2, 0.00, 0, 0, NULL, '덤벨 벤치 프레스', NULL, 0),
-	(180, 30, NULL, 3, 0.00, 0, 0, NULL, '체스트머신', 4, 1),
-	(181, 30, NULL, 4, 0.00, 0, 0, NULL, '인클라인 벤치프레스 머신', 7, 1),
-	(182, 30, 7, 5, 0.00, 0, 0, NULL, '덤벨 플라이', NULL, 0),
-	(183, 30, NULL, 6, 0.00, 0, 0, NULL, '케이블크러스오버', 8, 1),
-	(184, 30, NULL, 7, 0.00, 0, 0, NULL, '헤머 벤치프레스', 9, 1),
-	(206, 26, 19, 1, 20.00, 15, 4, NULL, '덤벨 데드리프트', NULL, 0),
-	(207, 26, NULL, 2, 20.00, 15, 5, NULL, '바벨 프레스1', 11, 1),
-	(208, 26, NULL, 3, 20.00, 15, 4, NULL, '바벨 로우1', 12, 1),
-	(209, 26, 5, 4, 20.00, 12, 4, NULL, '인클라인 바벨 프레스', NULL, 0),
-	(210, 26, 59, 5, 35.00, 12, 4, NULL, '시티드 로우', NULL, 0),
-	(211, 26, 52, 6, 30.00, 12, 4, NULL, '버티컬 체스트', NULL, 0),
-	(297, 33, 53, 1, 30.00, 15, 4, NULL, '펙 덱 플라이', NULL, 0),
-	(298, 33, 6, 2, 30.00, 12, 5, NULL, '디클라인 바벨 프레스', NULL, 0),
-	(299, 33, 5, 3, 40.00, 12, 5, NULL, '인클라인 바벨 프레스', NULL, 0),
-	(300, 33, 52, 4, 20.00, 15, 4, NULL, '버티컬 체스트', NULL, 0),
-	(301, 33, 9, 5, 60.00, 10, 3, NULL, '딥스', NULL, 0),
-	(302, 33, NULL, 6, 12.00, 12, 3, NULL, '오버헤드 익스텐션', 13, 1),
-	(303, 33, 44, 7, 20.00, 15, 3, NULL, '케이블 트라이셉스 익스텐션', NULL, 0),
-	(311, 34, 56, 1, 20.00, 15, 5, NULL, '암 풀 다운', NULL, 0),
-	(312, 34, 57, 2, 60.00, 10, 5, NULL, '어시스트 풀업', NULL, 0),
-	(313, 34, 58, 3, 30.00, 15, 4, NULL, '랫 풀 다운', NULL, 0),
-	(314, 34, 20, 4, 30.00, 15, 4, NULL, '바벨 로우', NULL, 0),
-	(315, 34, 59, 5, 35.00, 20, 4, NULL, '시티드 로우', NULL, 0),
-	(316, 34, 60, 6, 15.00, 12, 4, NULL, '바벨 컬', NULL, 0),
-	(317, 34, 61, 7, 5.00, 15, 3, NULL, '인클라인 덤벨 컬', NULL, 0),
-	(322, 35, NULL, 1, 10.00, 10, 5, NULL, '워킹런지', 14, 1),
-	(323, 35, NULL, 2, 10.00, 10, 7, NULL, '래그컬', 15, 1),
-	(324, 35, NULL, 3, 10.00, 10, 5, NULL, '스미스쿼트', 16, 1),
-	(325, 35, NULL, 4, 10.00, 10, 5, NULL, '고블린스쿼트', 17, 1),
-	(326, 36, 53, 1, 0.00, 0, 0, NULL, '펙 덱 플라이', NULL, 0),
-	(327, 36, 6, 2, 0.00, 0, 0, NULL, '디클라인 바벨 프레스', NULL, 0),
-	(328, 36, 5, 3, 0.00, 0, 0, NULL, '인클라인 바벨 프레스', NULL, 0),
-	(329, 36, 52, 4, 0.00, 0, 0, NULL, '버티컬 체스트', NULL, 0),
-	(330, 36, 9, 5, 0.00, 0, 0, NULL, '딥스', NULL, 0),
-	(331, 36, 44, 6, 0.00, 0, 0, NULL, '케이블 트라이셉스 익스텐션', NULL, 0),
-	(339, 37, 56, 1, 20.00, 15, 5, NULL, '암 풀 다운', NULL, 0),
-	(340, 37, 57, 2, 60.00, 10, 5, NULL, '어시스트 풀업', NULL, 0),
-	(341, 37, 58, 3, 30.00, 15, 4, NULL, '랫 풀 다운', NULL, 0),
-	(342, 37, 20, 4, 20.00, 15, 4, NULL, '바벨 로우', NULL, 0),
-	(343, 37, 59, 5, 35.00, 20, 4, NULL, '시티드 로우', NULL, 0),
-	(344, 37, 60, 6, 10.00, 20, 4, NULL, '바벨 컬', NULL, 0),
-	(345, 37, 61, 7, 5.00, 15, 3, NULL, '인클라인 덤벨 컬', NULL, 0),
-	(367, 38, 28, 1, 20.00, 5, 3, NULL, '바벨 오버헤드 프레스', NULL, 0),
-	(368, 38, 29, 2, 5.00, 20, 5, NULL, '덤벨 숄더 프레스', NULL, 0),
-	(369, 38, 35, 3, 15.00, 12, 4, NULL, '바벨 업라이트 로우', NULL, 0),
-	(370, 38, 30, 4, 5.00, 15, 5, NULL, '사이드 레터럴 레이즈', NULL, 0),
-	(371, 38, 32, 5, 20.00, 15, 4, NULL, '리어 델트 플라이', NULL, 0),
-	(372, 38, 62, 6, 5.00, 15, 5, NULL, '벤트 오버 레터럴 레이즈', NULL, 0),
-	(373, 38, 33, 7, 10.00, 12, 3, NULL, '바벨 슈러그', NULL, 0),
-	(379, 39, 57, 1, 50.00, 15, 5, NULL, '어시스트 풀업', NULL, 0),
-	(380, 39, NULL, 2, 20.00, 30, 5, NULL, '랫플다운', 20, 1),
-	(381, 39, NULL, 3, 20.00, 20, 5, NULL, '랫플다운', 20, 1),
-	(382, 39, 59, 4, 20.00, 15, 5, NULL, '시티드 로우', NULL, 0),
-	(383, 39, NULL, 5, 2.00, 20, 5, NULL, '티바로우', 19, 1),
-	(384, 39, 19, 6, 20.00, 15, 6, NULL, '덤벨 데드리프트', NULL, 0),
-	(385, 40, 57, 1, 50.00, 15, 5, NULL, '어시스트 풀업', NULL, 0),
-	(386, 40, 58, 2, 20.00, 30, 5, NULL, '랫풀다운', 21, 0),
-	(387, 40, 58, 3, 20.00, 20, 5, NULL, '랫 풀 다운', 21, 0),
-	(388, 40, 59, 4, 20.00, 15, 5, NULL, '시티드 로우', NULL, 0),
-	(389, 40, NULL, 5, 5.00, 20, 5, NULL, 'T바로우', 23, 1),
-	(390, 40, 18, 6, 20.00, 15, 6, NULL, '데드리프트', NULL, 0);
+-- 테이블 데이터 hellchang.m_workout_exercise:~144 rows (대략적) 내보내기
+INSERT IGNORE INTO `m_workout_exercise` (`wx_id`, `session_id`, `ex_id`, `order_no`, `weight`, `reps`, `sets`, `note`, `original_exercise_name`, `temp_ex_id`, `is_temp`, `is_warmup`) VALUES
+	(1, 1, 1, 1, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
+	(2, 1, 2, 2, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
+	(3, 1, 3, 3, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
+	(4, 2, 4, 1, 10.00, 15, 5, NULL, '덤벨 프레스', NULL, 0, 0),
+	(5, 2, 12, 2, 20.00, 10, 3, NULL, '바벨 스쿼트', NULL, 0, 0),
+	(6, 2, 3, 3, 5.00, 12, 4, NULL, '라잉 트라이셉스', NULL, 0, 0),
+	(7, 2, 12, 1, 10.00, 15, 5, NULL, '바벨 스쿼트', NULL, 0, 0),
+	(8, 2, 19, 2, 20.00, 10, 3, NULL, '데드 리프트', NULL, 0, 0),
+	(9, 4, 4, 1, 10.00, 15, 2, NULL, '덤벨 벤치 프레스', NULL, 0, 0),
+	(10, 4, 12, 2, 20.00, 10, 1, NULL, '바벨 스쿼트', NULL, 0, 0),
+	(11, 4, 3, 3, 5.00, 12, 8, NULL, '라잉 트라이셉스 익스텐션', NULL, 0, 0),
+	(49, 10, 6, 1, 20.00, 12, 5, NULL, '바벨 벤치 프레스', NULL, 0, 0),
+	(50, 10, 9, 2, 60.00, 10, 3, NULL, '딥스', NULL, 0, 0),
+	(51, 10, 53, 3, 30.00, 15, 4, NULL, '펙덱플라이', NULL, 0, 0),
+	(52, 10, 5, 4, 20.00, 12, 5, NULL, '인클라인 바벨 벤치 프레스', NULL, 0, 0),
+	(53, 10, 52, 5, 20.00, 15, 4, NULL, '버티컬 체스트', NULL, 0, 0),
+	(54, 10, 44, 6, 20.00, 15, 3, NULL, '케이블 익스텐션', NULL, 0, 0),
+	(95, 21, 56, 1, 20.00, 15, 5, NULL, '암 풀 다운', NULL, 0, 0),
+	(96, 21, 57, 2, 60.00, 12, 5, NULL, '어시스트 풀업', NULL, 0, 0),
+	(97, 21, 58, 3, 30.00, 15, 4, NULL, '랫 풀 다운', NULL, 0, 0),
+	(98, 21, 20, 4, 20.00, 15, 4, NULL, '바벨로우', NULL, 0, 0),
+	(99, 21, 59, 5, 35.00, 20, 4, NULL, '시티드 로우', NULL, 0, 0),
+	(100, 21, 60, 6, 20.00, 12, 4, NULL, '바벨컬', NULL, 0, 0),
+	(101, 21, 61, 7, 15.00, 15, 3, NULL, '인클라인 덤벨컬', NULL, 0, 0),
+	(143, 27, 28, 1, 20.00, 12, 4, NULL, '바벨 오버헤드 프레스', NULL, 0, 0),
+	(144, 27, 29, 2, 10.00, 20, 4, NULL, '덤벨 숄더 프레스', NULL, 0, 0),
+	(145, 27, 35, 3, 15.00, 12, 4, NULL, '바벨 업라이트 로우', NULL, 0, 0),
+	(146, 27, 30, 4, 5.00, 15, 5, NULL, '사이드 레터럴 레이즈', NULL, 0, 0),
+	(147, 27, 32, 5, 10.00, 15, 4, NULL, '리어 델트 플라이', NULL, 0, 0),
+	(148, 27, 62, 6, 10.00, 15, 5, NULL, '벤트 오버 레터럴 레이즈', NULL, 0, 0),
+	(149, 27, 33, 7, 10.00, 12, 3, NULL, '바벨 슈러그', NULL, 0, 0),
+	(150, 28, 14, 1, 20.00, 20, 5, NULL, '레그 익스텐션', NULL, 0, 0),
+	(151, 28, 63, 2, 20.00, 10, 4, NULL, '바벨 백 스쿼트', NULL, 0, 0),
+	(152, 28, 64, 3, 130.00, 10, 4, NULL, '파워 레그프레스', NULL, 0, 0),
+	(153, 28, 16, 4, 0.00, 10, 4, NULL, '런지', NULL, 0, 0),
+	(154, 28, 65, 5, 10.00, 20, 3, NULL, '아웃타이', NULL, 0, 0),
+	(155, 28, 67, 6, 10.00, 15, 3, NULL, '힙스러스트', NULL, 0, 0),
+	(156, 28, 68, 7, 10.00, 15, 3, NULL, '어덕션', NULL, 0, 0),
+	(178, 30, NULL, 1, 20.00, 15, 5, NULL, '딥스 5세트', 10, 1, 0),
+	(179, 30, 4, 2, 0.00, 0, 0, NULL, '덤벨 벤치 프레스', NULL, 0, 0),
+	(180, 30, NULL, 3, 0.00, 0, 0, NULL, '체스트머신', 4, 1, 0),
+	(181, 30, NULL, 4, 0.00, 0, 0, NULL, '인클라인 벤치프레스 머신', 7, 1, 0),
+	(182, 30, 7, 5, 0.00, 0, 0, NULL, '덤벨 플라이', NULL, 0, 0),
+	(183, 30, NULL, 6, 0.00, 0, 0, NULL, '케이블크러스오버', 8, 1, 0),
+	(184, 30, NULL, 7, 0.00, 0, 0, NULL, '헤머 벤치프레스', 9, 1, 0),
+	(206, 26, 19, 1, 20.00, 15, 4, NULL, '덤벨 데드리프트', NULL, 0, 0),
+	(207, 26, NULL, 2, 20.00, 15, 5, NULL, '바벨 프레스1', 11, 1, 0),
+	(208, 26, NULL, 3, 20.00, 15, 4, NULL, '바벨 로우1', 12, 1, 0),
+	(209, 26, 5, 4, 20.00, 12, 4, NULL, '인클라인 바벨 프레스', NULL, 0, 0),
+	(210, 26, 59, 5, 35.00, 12, 4, NULL, '시티드 로우', NULL, 0, 0),
+	(211, 26, 52, 6, 30.00, 12, 4, NULL, '버티컬 체스트', NULL, 0, 0),
+	(297, 33, 53, 1, 30.00, 15, 4, NULL, '펙 덱 플라이', NULL, 0, 0),
+	(298, 33, 6, 2, 30.00, 12, 5, NULL, '디클라인 바벨 프레스', NULL, 0, 0),
+	(299, 33, 5, 3, 40.00, 12, 5, NULL, '인클라인 바벨 프레스', NULL, 0, 0),
+	(300, 33, 52, 4, 20.00, 15, 4, NULL, '버티컬 체스트', NULL, 0, 0),
+	(301, 33, 9, 5, 60.00, 10, 3, NULL, '딥스', NULL, 0, 0),
+	(302, 33, NULL, 6, 12.00, 12, 3, NULL, '오버헤드 익스텐션', 13, 1, 0),
+	(303, 33, 44, 7, 20.00, 15, 3, NULL, '케이블 트라이셉스 익스텐션', NULL, 0, 0),
+	(311, 34, 56, 1, 20.00, 15, 5, NULL, '암 풀 다운', NULL, 0, 0),
+	(312, 34, 57, 2, 60.00, 10, 5, NULL, '어시스트 풀업', NULL, 0, 0),
+	(313, 34, 58, 3, 30.00, 15, 4, NULL, '랫 풀 다운', NULL, 0, 0),
+	(314, 34, 20, 4, 30.00, 15, 4, NULL, '바벨 로우', NULL, 0, 0),
+	(315, 34, 59, 5, 35.00, 20, 4, NULL, '시티드 로우', NULL, 0, 0),
+	(316, 34, 60, 6, 15.00, 12, 4, NULL, '바벨 컬', NULL, 0, 0),
+	(317, 34, 61, 7, 5.00, 15, 3, NULL, '인클라인 덤벨 컬', NULL, 0, 0),
+	(322, 35, NULL, 1, 10.00, 10, 5, NULL, '워킹런지', 14, 1, 0),
+	(323, 35, NULL, 2, 10.00, 10, 7, NULL, '래그컬', 15, 1, 0),
+	(324, 35, NULL, 3, 10.00, 10, 5, NULL, '스미스쿼트', 16, 1, 0),
+	(325, 35, NULL, 4, 10.00, 10, 5, NULL, '고블린스쿼트', 17, 1, 0),
+	(326, 36, 53, 1, 0.00, 0, 0, NULL, '펙 덱 플라이', NULL, 0, 0),
+	(327, 36, 6, 2, 0.00, 0, 0, NULL, '디클라인 바벨 프레스', NULL, 0, 0),
+	(328, 36, 5, 3, 0.00, 0, 0, NULL, '인클라인 바벨 프레스', NULL, 0, 0),
+	(329, 36, 52, 4, 0.00, 0, 0, NULL, '버티컬 체스트', NULL, 0, 0),
+	(330, 36, 9, 5, 0.00, 0, 0, NULL, '딥스', NULL, 0, 0),
+	(331, 36, 44, 6, 0.00, 0, 0, NULL, '케이블 트라이셉스 익스텐션', NULL, 0, 0),
+	(339, 37, 56, 1, 20.00, 15, 5, NULL, '암 풀 다운', NULL, 0, 0),
+	(340, 37, 57, 2, 60.00, 10, 5, NULL, '어시스트 풀업', NULL, 0, 0),
+	(341, 37, 58, 3, 30.00, 15, 4, NULL, '랫 풀 다운', NULL, 0, 0),
+	(342, 37, 20, 4, 20.00, 15, 4, NULL, '바벨 로우', NULL, 0, 0),
+	(343, 37, 59, 5, 35.00, 20, 4, NULL, '시티드 로우', NULL, 0, 0),
+	(344, 37, 60, 6, 10.00, 20, 4, NULL, '바벨 컬', NULL, 0, 0),
+	(345, 37, 61, 7, 5.00, 15, 3, NULL, '인클라인 덤벨 컬', NULL, 0, 0),
+	(367, 38, 28, 1, 20.00, 5, 3, NULL, '바벨 오버헤드 프레스', NULL, 0, 0),
+	(368, 38, 29, 2, 5.00, 20, 5, NULL, '덤벨 숄더 프레스', NULL, 0, 0),
+	(369, 38, 35, 3, 15.00, 12, 4, NULL, '바벨 업라이트 로우', NULL, 0, 0),
+	(370, 38, 30, 4, 5.00, 15, 5, NULL, '사이드 레터럴 레이즈', NULL, 0, 0),
+	(371, 38, 32, 5, 20.00, 15, 4, NULL, '리어 델트 플라이', NULL, 0, 0),
+	(372, 38, 62, 6, 5.00, 15, 5, NULL, '벤트 오버 레터럴 레이즈', NULL, 0, 0),
+	(373, 38, 33, 7, 10.00, 12, 3, NULL, '바벨 슈러그', NULL, 0, 0),
+	(379, 39, 57, 1, 50.00, 15, 5, NULL, '어시스트 풀업', NULL, 0, 0),
+	(380, 39, NULL, 2, 20.00, 30, 5, NULL, '랫플다운', 20, 1, 0),
+	(381, 39, NULL, 3, 20.00, 20, 5, NULL, '랫플다운', 20, 1, 0),
+	(382, 39, 59, 4, 20.00, 15, 5, NULL, '시티드 로우', NULL, 0, 0),
+	(383, 39, NULL, 5, 2.00, 20, 5, NULL, '티바로우', 19, 1, 0),
+	(384, 39, 19, 6, 20.00, 15, 6, NULL, '덤벨 데드리프트', NULL, 0, 0),
+	(385, 40, 57, 1, 50.00, 15, 5, NULL, '어시스트 풀업', NULL, 0, 0),
+	(386, 40, 58, 2, 20.00, 30, 5, NULL, '랫풀다운', 21, 0, 0),
+	(387, 40, 58, 3, 20.00, 20, 5, NULL, '랫 풀 다운', 21, 0, 0),
+	(388, 40, 59, 4, 20.00, 15, 5, NULL, '시티드 로우', NULL, 0, 0),
+	(389, 40, NULL, 5, 5.00, 20, 5, NULL, 'T바로우', 23, 1, 0),
+	(390, 40, 18, 6, 20.00, 15, 6, NULL, '데드리프트', NULL, 0, 0),
+	(394, 43, 30, 1, 10.00, 5, 5, '', '사이드 레터럴 레이즈', NULL, 0, 0),
+	(395, 43, 69, 2, 0.00, 0, 0, '', '비하인드 넥 프레스', NULL, 0, 0),
+	(396, 43, 70, 3, 0.00, 0, 0, '', '머신 숄더 프레스', NULL, 0, 0),
+	(397, 43, 28, 4, 0.00, 0, 0, '', '바벨 오버헤드 프레스', NULL, 0, 0),
+	(398, 43, 29, 5, 0.00, 0, 0, '', '덤벨 숄더 프레스', NULL, 0, 0),
+	(399, 43, 71, 6, 0.00, 0, 0, '', '바벨 프론트 레터럴 레이즈', NULL, 0, 0),
+	(400, 43, 30, 7, 0.00, 0, 0, '', '사이드 레터럴 레이즈', NULL, 0, 0),
+	(408, 45, 30, 1, 0.00, 0, 4, '', '사이드 레터럴 레이즈', NULL, 0, 0),
+	(409, 45, 69, 2, 0.00, 0, 4, '', '비하인드 넥 프레스', NULL, 0, 0),
+	(410, 45, 70, 3, 0.00, 0, 4, '', '머신 숄더 프레스', NULL, 0, 0),
+	(411, 45, 28, 4, 0.00, 0, 4, '', '바벨 오버헤드 프레스', NULL, 0, 0),
+	(412, 45, 29, 5, 36.00, 14, 4, '', '덤벨 숄더 프레스', NULL, 0, 0),
+	(413, 45, 71, 6, 0.00, 0, 4, '', '바벨 프론트 레터럴 레이즈', NULL, 0, 0),
+	(414, 45, 30, 7, 5.00, 10, 4, '', '사이드 레터럴 레이즈', NULL, 0, 0),
+	(422, 47, 30, 1, 1.00, 30, 6, NULL, '사이드 레터럴 레이즈', NULL, 0, 0),
+	(423, 47, 69, 2, 17.00, 10, 5, NULL, '비하인드 넥 프레스', NULL, 0, 0),
+	(424, 47, 70, 3, 5.00, 13, 4, NULL, '머신 숄더 프레스', NULL, 0, 0),
+	(425, 47, 28, 4, 7.00, 20, 3, NULL, '바벨 오버헤드 프레스', NULL, 0, 0),
+	(426, 47, 29, 5, 0.00, 0, 0, NULL, '덤벨 숄더 프레스', NULL, 0, 0),
+	(427, 47, 71, 6, 0.00, 0, 0, NULL, '바벨 프론트 레터럴 레이즈', NULL, 0, 0),
+	(428, 47, 30, 7, 0.00, 0, 0, NULL, '사이드 레터럴 레이즈', NULL, 0, 0),
+	(429, 48, 30, 1, 1.00, 30, 6, NULL, '사이드 레터럴 레이즈', NULL, 0, 0),
+	(430, 48, 69, 2, 17.00, 10, 5, NULL, '비하인드 넥 프레스', NULL, 0, 0),
+	(431, 48, 70, 3, 5.00, 13, 4, NULL, '머신 숄더 프레스', NULL, 0, 0),
+	(432, 48, 28, 4, 7.00, 20, 3, NULL, '바벨 오버헤드 프레스', NULL, 0, 0),
+	(433, 48, 29, 5, 0.00, 0, 0, NULL, '덤벨 숄더 프레스', NULL, 0, 0),
+	(434, 48, 71, 6, 0.00, 0, 0, NULL, '바벨 프론트 레터럴 레이즈', NULL, 0, 0),
+	(435, 48, 30, 7, 0.00, 0, 0, NULL, '사이드 레터럴 레이즈', NULL, 0, 0),
+	(436, 49, 68, 1, 25.00, 15, 4, NULL, '어덕션', NULL, 0, 0),
+	(437, 49, NULL, 2, 15.00, 4, 0, NULL, '힙스러스트10', 25, 1, 0),
+	(438, 49, 11, 3, 20.00, 15, 4, NULL, '바벨스쿼트', NULL, 0, 0),
+	(439, 49, 14, 4, 16.00, 20, 5, NULL, '레그익스텐션', NULL, 0, 0),
+	(440, 49, NULL, 5, 3.00, 15, 5, NULL, '고블릿스쿼트', 26, 1, 0),
+	(441, 50, NULL, 1, 15.00, 20, 5, NULL, '라잉 레그컬', 27, 1, 0),
+	(442, 50, NULL, 2, 15.00, 15, 5, NULL, '프론레그컬', 28, 1, 0),
+	(443, 50, NULL, 3, 15.00, 15, 5, NULL, '프론레그컬', 29, 1, 0),
+	(444, 50, NULL, 4, 15.00, 15, 5, NULL, '프론레그컬', 30, 1, 0),
+	(445, 51, 68, 1, 25.00, 20, 5, NULL, '어덕션', NULL, 0, 0),
+	(446, 51, NULL, 2, 10.00, 20, 5, NULL, '힙쓰러스트', 31, 1, 0),
+	(447, 51, 11, 3, 20.00, 20, 4, NULL, '바벨스쿼트', NULL, 0, 0),
+	(448, 51, 14, 4, 32.00, 20, 5, NULL, '레그익스텐션', NULL, 0, 0),
+	(449, 51, NULL, 5, 5.00, 12, 3, NULL, '고블릿스쿼트', 32, 1, 0),
+	(450, 51, NULL, 6, 3.00, 2, 2, NULL, '워킹런지', 33, 1, 0);
 
 -- 테이블 hellchang.m_workout_session 구조 내보내기
 CREATE TABLE IF NOT EXISTS `m_workout_session` (
@@ -1022,9 +1083,9 @@ CREATE TABLE IF NOT EXISTS `m_workout_session` (
   `start_time` datetime DEFAULT NULL COMMENT '운동 시작시간',
   `end_time` datetime DEFAULT NULL COMMENT '운동 종료시간',
   PRIMARY KEY (`session_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=42 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='운동 세션(일자)';
+) ENGINE=InnoDB AUTO_INCREMENT=52 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='운동 세션(일자)';
 
--- 테이블 데이터 hellchang.m_workout_session:~17 rows (대략적) 내보내기
+-- 테이블 데이터 hellchang.m_workout_session:~24 rows (대략적) 내보내기
 INSERT IGNORE INTO `m_workout_session` (`session_id`, `user_id`, `workout_date`, `note`, `duration`, `start_time`, `end_time`) VALUES
 	(1, 1, '2025-08-27', '가슴/삼두', NULL, NULL, NULL),
 	(2, 6, '2025-08-28', '오늘의 운동', NULL, NULL, NULL),
@@ -1042,7 +1103,14 @@ INSERT IGNORE INTO `m_workout_session` (`session_id`, `user_id`, `workout_date`,
 	(37, 6, '2025-09-23', '', NULL, '2025-09-23 14:22:02', '2025-09-23 21:01:15'),
 	(38, 6, '2025-09-24', '', NULL, '2025-09-24 17:31:24', '2025-09-24 20:33:19'),
 	(39, 18, '2025-09-24', '', NULL, '2025-09-24 19:18:23', NULL),
-	(40, 19, '2025-09-24', '', NULL, '2025-09-25 17:10:00', '2025-09-25 18:40:00');
+	(40, 19, '2025-09-24', '', NULL, '2025-09-25 17:10:00', '2025-09-25 18:40:00'),
+	(43, 6, '2025-09-25', '템플릿 할당: ', NULL, '2025-09-25 11:19:10', NULL),
+	(45, 18, '2025-09-25', '템플릿 할당: ', NULL, '2025-09-26 19:30:37', NULL),
+	(47, 19, '2025-09-25', '', NULL, '2025-09-25 17:43:15', '2025-09-25 18:02:22'),
+	(48, 19, '2025-09-26', '', NULL, '2025-09-26 19:26:33', NULL),
+	(49, 18, '2025-09-26', '', NULL, '2025-09-26 19:38:05', NULL),
+	(50, 6, '2025-09-26', '', NULL, '2025-09-26 19:50:46', NULL),
+	(51, 19, '2025-09-27', '', NULL, '2025-09-27 15:08:55', '2025-09-27 15:12:16');
 
 -- 테이블 hellchang.m_workout_set 구조 내보내기
 CREATE TABLE IF NOT EXISTS `m_workout_set` (
@@ -1058,9 +1126,9 @@ CREATE TABLE IF NOT EXISTS `m_workout_set` (
   PRIMARY KEY (`set_id`),
   KEY `idx_ws_wx` (`wx_id`),
   CONSTRAINT `fk_ws_wx` FOREIGN KEY (`wx_id`) REFERENCES `m_workout_exercise` (`wx_id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=459 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='세트 기록';
+) ENGINE=InnoDB AUTO_INCREMENT=548 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='세트 기록';
 
--- 테이블 데이터 hellchang.m_workout_set:~306 rows (대략적) 내보내기
+-- 테이블 데이터 hellchang.m_workout_set:~375 rows (대략적) 내보내기
 INSERT IGNORE INTO `m_workout_set` (`set_id`, `wx_id`, `set_no`, `weight`, `reps`, `rir`, `completed_at`, `rest_time`, `total_time`) VALUES
 	(43, 51, 1, 30.00, 15, NULL, '2025-09-08 10:09:37', 77, 378),
 	(44, 51, 2, 30.00, 15, NULL, '2025-09-08 10:09:37', 109, 378),
@@ -1367,7 +1435,76 @@ INSERT IGNORE INTO `m_workout_set` (`set_id`, `wx_id`, `set_no`, `weight`, `reps
 	(450, 372, 5, 5.00, 15, NULL, '2025-09-24 11:28:15', 102, 520),
 	(451, 373, 1, 10.00, 12, NULL, '2025-09-24 11:33:10', 66, 237),
 	(452, 373, 2, 10.00, 12, NULL, '2025-09-24 11:33:10', 86, 237),
-	(453, 373, 3, 10.00, 12, NULL, '2025-09-24 11:33:10', 85, 237);
+	(453, 373, 3, 10.00, 12, NULL, '2025-09-24 11:33:10', 85, 237),
+	(470, 424, 1, 5.00, 15, NULL, '2025-09-25 08:53:07', 79, 440),
+	(471, 424, 2, 5.00, 15, NULL, '2025-09-25 08:53:07', 130, 440),
+	(472, 424, 3, 5.00, 15, NULL, '2025-09-25 08:53:07', 124, 440),
+	(473, 424, 4, 5.00, 13, NULL, '2025-09-25 08:53:07', 107, 440),
+	(474, 425, 1, 7.00, 20, NULL, '2025-09-25 09:01:04', 199, 466),
+	(475, 425, 2, 7.00, 1, NULL, '2025-09-25 09:01:04', 143, 466),
+	(476, 425, 3, 7.00, 1, NULL, '2025-09-25 09:01:04', 124, 466),
+	(482, 423, 1, 17.00, 10, NULL, '2025-09-25 09:01:35', 1, 1),
+	(483, 423, 2, 17.00, 10, NULL, '2025-09-25 09:01:35', 0, 1),
+	(484, 423, 3, 17.00, 10, NULL, '2025-09-25 09:01:35', 0, 1),
+	(485, 423, 4, 17.00, 10, NULL, '2025-09-25 09:01:35', 0, 1),
+	(486, 423, 5, 17.00, 10, NULL, '2025-09-25 09:01:35', 0, 1),
+	(487, 422, 1, 1.00, 30, NULL, '2025-09-25 09:01:41', 0, 0),
+	(488, 422, 2, 1.00, 30, NULL, '2025-09-25 09:01:41', 0, 0),
+	(489, 422, 3, 1.00, 30, NULL, '2025-09-25 09:01:41', 0, 0),
+	(490, 422, 4, 1.00, 30, NULL, '2025-09-25 09:01:41', 0, 0),
+	(491, 422, 5, 1.00, 30, NULL, '2025-09-25 09:01:41', 0, 0),
+	(492, 408, 1, 0.00, 0, NULL, '2025-09-26 10:31:07', 4, 6),
+	(493, 408, 2, 0.00, 0, NULL, '2025-09-26 10:31:07', 2, 6),
+	(494, 408, 3, 0.00, 0, NULL, '2025-09-26 10:31:07', 0, 6),
+	(495, 408, 4, 0.00, 0, NULL, '2025-09-26 10:31:07', 0, 6),
+	(496, 409, 1, 0.00, 0, NULL, '2025-09-26 10:31:17', 1, 1),
+	(497, 409, 2, 0.00, 0, NULL, '2025-09-26 10:31:17', 0, 1),
+	(498, 409, 3, 0.00, 0, NULL, '2025-09-26 10:31:17', 0, 1),
+	(499, 409, 4, 0.00, 0, NULL, '2025-09-26 10:31:17', 0, 1),
+	(500, 410, 1, 0.00, 0, NULL, '2025-09-26 10:31:39', 2, 3),
+	(501, 410, 2, 0.00, 0, NULL, '2025-09-26 10:31:39', 0, 3),
+	(502, 410, 3, 0.00, 0, NULL, '2025-09-26 10:31:39', 1, 3),
+	(503, 410, 4, 0.00, 0, NULL, '2025-09-26 10:31:39', 0, 3),
+	(504, 411, 1, 0.00, 0, NULL, '2025-09-26 10:31:53', 0, 0),
+	(505, 411, 2, 0.00, 0, NULL, '2025-09-26 10:31:53', 0, 0),
+	(506, 411, 3, 0.00, 0, NULL, '2025-09-26 10:31:53', 0, 0),
+	(507, 411, 4, 0.00, 0, NULL, '2025-09-26 10:31:53', 0, 0),
+	(512, 413, 1, 0.00, 0, NULL, '2025-09-26 10:32:08', 0, 0),
+	(513, 413, 2, 0.00, 0, NULL, '2025-09-26 10:32:08', 0, 0),
+	(514, 413, 3, 0.00, 0, NULL, '2025-09-26 10:32:08', 0, 0),
+	(515, 413, 4, 0.00, 0, NULL, '2025-09-26 10:32:08', 0, 0),
+	(516, 414, 1, 5.00, 10, NULL, '2025-09-26 10:32:54', 0, 13),
+	(517, 414, 2, 5.00, 10, NULL, '2025-09-26 10:32:54', 0, 13),
+	(518, 414, 3, 5.00, 10, NULL, '2025-09-26 10:32:54', 13, 13),
+	(519, 414, 4, 5.00, 10, NULL, '2025-09-26 10:32:54', 0, 13),
+	(520, 441, 1, 15.00, 20, NULL, '2025-09-26 10:55:10', 10, 171),
+	(521, 441, 2, 15.00, 20, NULL, '2025-09-26 10:55:10', 3, 171),
+	(522, 441, 3, 15.00, 20, NULL, '2025-09-26 10:55:10', 122, 171),
+	(523, 441, 4, 15.00, 20, NULL, '2025-09-26 10:55:10', 36, 171),
+	(524, 445, 1, 25.00, 20, NULL, '2025-09-27 06:09:06', 0, 0),
+	(525, 445, 2, 25.00, 20, NULL, '2025-09-27 06:09:06', 0, 0),
+	(526, 445, 3, 25.00, 20, NULL, '2025-09-27 06:09:06', 0, 0),
+	(527, 445, 4, 25.00, 20, NULL, '2025-09-27 06:09:06', 0, 0),
+	(528, 445, 5, 25.00, 20, NULL, '2025-09-27 06:09:06', 0, 0),
+	(529, 446, 1, 10.00, 20, NULL, '2025-09-27 06:09:19', 2, 3),
+	(530, 446, 2, 10.00, 20, NULL, '2025-09-27 06:09:19', 1, 3),
+	(531, 446, 3, 10.00, 20, NULL, '2025-09-27 06:09:19', 0, 3),
+	(532, 446, 4, 10.00, 20, NULL, '2025-09-27 06:09:19', 0, 3),
+	(533, 446, 5, 10.00, 20, NULL, '2025-09-27 06:09:19', 0, 3),
+	(534, 447, 1, 20.00, 20, NULL, '2025-09-27 06:09:27', 2, 2),
+	(535, 447, 2, 20.00, 20, NULL, '2025-09-27 06:09:27', 0, 2),
+	(536, 447, 3, 20.00, 20, NULL, '2025-09-27 06:09:27', 0, 2),
+	(537, 447, 4, 20.00, 20, NULL, '2025-09-27 06:09:27', 0, 2),
+	(538, 448, 1, 32.00, 20, NULL, '2025-09-27 06:09:38', 1, 1),
+	(539, 448, 2, 32.00, 20, NULL, '2025-09-27 06:09:38', 0, 1),
+	(540, 448, 3, 32.00, 20, NULL, '2025-09-27 06:09:38', 0, 1),
+	(541, 448, 4, 32.00, 20, NULL, '2025-09-27 06:09:38', 0, 1),
+	(542, 448, 5, 32.00, 20, NULL, '2025-09-27 06:09:38', 0, 1),
+	(543, 449, 1, 5.00, 20, NULL, '2025-09-27 06:11:58', 1, 2),
+	(544, 449, 2, 5.00, 20, NULL, '2025-09-27 06:11:58', 0, 2),
+	(545, 449, 3, 5.00, 12, NULL, '2025-09-27 06:11:58', 1, 2),
+	(546, 450, 1, 3.00, 2, NULL, '2025-09-27 06:12:11', 1, 1),
+	(547, 450, 2, 3.00, 2, NULL, '2025-09-27 06:12:11', 0, 1);
 
 -- 테이블 hellchang.m_workout_template 구조 내보내기
 CREATE TABLE IF NOT EXISTS `m_workout_template` (
@@ -1439,9 +1576,9 @@ CREATE TABLE IF NOT EXISTS `sessions` (
   KEY `idx_sessions_token` (`session_token`) USING BTREE,
   KEY `idx_sessions_expires` (`expires_at`) USING BTREE,
   CONSTRAINT `sessions_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=80 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=91 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- 테이블 데이터 hellchang.sessions:~38 rows (대략적) 내보내기
+-- 테이블 데이터 hellchang.sessions:~49 rows (대략적) 내보내기
 INSERT IGNORE INTO `sessions` (`id`, `user_id`, `session_token`, `expires_at`, `created_at`) VALUES
 	(42, 6, 'b91c0d9e2d54eb5a18ee81276ac5d6d8cf31cba70e0b2066973626f02d69b71a', '2025-09-26 15:52:52', '2025-08-28 00:52:52'),
 	(43, 6, 'e8ff4cb341cf403bd2b0be825adde845fad1d33d66652397c20451c0e246050c', '2025-09-26 16:22:21', '2025-08-28 01:22:21'),
@@ -1480,7 +1617,18 @@ INSERT IGNORE INTO `sessions` (`id`, `user_id`, `session_token`, `expires_at`, `
 	(76, 19, 'b7af09afeaf736fe8ca68f1d0c950116a87a4fa576ebb30da91fb3c6e3a74c9f', '2025-10-24 01:14:47', '2025-09-24 10:14:47'),
 	(77, 18, '0ec418fb98fec4b2aa0533a23450a385e72d998fe13aa7bf3adfd10f3b9ad089', '2025-10-24 01:26:46', '2025-09-24 10:26:46'),
 	(78, 20, '1921ccbfad81c491e2e9cbd27efab8a464de7554d9491bbb7925c06ef0c8e0b7', '2025-10-24 01:34:56', '2025-09-24 10:34:56'),
-	(79, 19, 'f8e385e86fc756705725a93ecb284a62d29df95759b51025ad1f1a79976d82ee', '2025-10-24 16:11:37', '2025-09-25 01:11:37');
+	(79, 19, 'f8e385e86fc756705725a93ecb284a62d29df95759b51025ad1f1a79976d82ee', '2025-10-24 16:11:37', '2025-09-25 01:11:37'),
+	(80, 6, 'df9a75e682d8a4ef8ac2bd2116db3c0721504792ce7b5022a30f30b5f01f4a58', '2025-10-24 17:17:46', '2025-09-25 02:17:46'),
+	(81, 6, '87e0f665d435a11c045d3e74fb0d27bfe033838d069f5ec422d9d66e4294d88b', '2025-10-24 23:00:42', '2025-09-25 08:00:42'),
+	(82, 19, '1234bae09adf5f520ce515ce160ebad0fcf98da54de79efe8705cd84704e0b0a', '2025-10-24 23:11:42', '2025-09-25 08:11:42'),
+	(83, 18, '1973b5df2eb0f98325e68ae7f6ebebadb57199f9c38e5de2c537b68a80c42c81', '2025-10-25 00:06:04', '2025-09-25 09:06:04'),
+	(84, 19, 'd3aaa395d573e50a988132e47485726995d00dfae161b70a4aa6aef9c92f15c9', '2025-10-25 03:24:24', '2025-09-25 12:24:24'),
+	(85, 19, 'a8423fa16949552fa4b426b60c7e233f294625f854d7fb7553e625bdc13d1148', '2025-10-25 17:38:46', '2025-09-26 02:38:46'),
+	(86, 19, '75c41e31f625e9cea8a74236ba34919776b89652022327f4ec1932f1bd1650d7', '2025-10-26 01:24:42', '2025-09-26 10:24:42'),
+	(87, 18, 'c2cef709b3ea0d82b8d98c40d5a38643268402fcab5485bdad03694bbc9d7791', '2025-10-26 01:30:22', '2025-09-26 10:30:22'),
+	(88, 6, 'db30efbaeb9d63a26281178153da795cba6654742e4469b24cc0f1ab38844585', '2025-10-26 01:50:03', '2025-09-26 10:50:03'),
+	(89, 19, '4e2378fc0c44d51c74c89273a4d7e54c148af7ecca8a966cf85ad47a27888827', '2025-10-26 21:05:43', '2025-09-27 06:05:43'),
+	(90, 6, '2e896fb2c6b502db583cc726d69fa838b6aa59dc3e33bf2b6bb96f8d5b82d917', '2025-10-27 03:21:22', '2025-09-27 12:21:22');
 
 -- 테이블 hellchang.trainer_assessments 구조 내보내기
 CREATE TABLE IF NOT EXISTS `trainer_assessments` (
@@ -1544,12 +1692,7 @@ CREATE TABLE IF NOT EXISTS `trainer_permissions` (
   CONSTRAINT `trainer_permissions_ibfk_2` FOREIGN KEY (`member_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- 테이블 데이터 hellchang.trainer_permissions:~4 rows (대략적) 내보내기
-INSERT IGNORE INTO `trainer_permissions` (`id`, `trainer_id`, `member_id`, `can_view_workouts`, `can_view_body_data`, `can_create_schedules`, `can_add_comments`, `can_assess`, `can_edit_goals`, `created_at`, `updated_at`) VALUES
-	(1, 8, 7, 1, 0, 1, 1, 1, 0, '2025-08-30 17:32:37', '2025-08-30 17:32:37'),
-	(2, 9, 10, 1, 0, 1, 1, 1, 0, '2025-08-30 17:32:37', '2025-08-30 17:32:37'),
-	(6, 8, 6, 1, 0, 1, 1, 1, 0, '2025-08-30 18:06:00', '2025-08-30 18:06:00'),
-	(7, 16, 6, 1, 0, 1, 1, 1, 0, '2025-08-30 18:06:12', '2025-08-30 18:06:12');
+-- 테이블 데이터 hellchang.trainer_permissions:~0 rows (대략적) 내보내기
 
 -- 테이블 hellchang.trainer_relationships 구조 내보내기
 CREATE TABLE IF NOT EXISTS `trainer_relationships` (
@@ -1571,12 +1714,7 @@ CREATE TABLE IF NOT EXISTS `trainer_relationships` (
   CONSTRAINT `trainer_relationships_ibfk_2` FOREIGN KEY (`member_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- 테이블 데이터 hellchang.trainer_relationships:~4 rows (대략적) 내보내기
-INSERT IGNORE INTO `trainer_relationships` (`id`, `trainer_id`, `member_id`, `status`, `request_date`, `approval_date`, `termination_date`, `created_at`, `updated_at`) VALUES
-	(1, 8, 7, 'approved', '2025-08-30 17:32:37', '2025-08-30 17:32:37', NULL, '2025-08-30 17:32:37', '2025-08-30 17:32:37'),
-	(2, 9, 10, 'approved', '2025-08-30 17:32:37', '2025-08-30 17:32:37', NULL, '2025-08-30 17:32:37', '2025-08-30 17:32:37'),
-	(6, 8, 6, 'pending', '2025-08-30 18:06:00', NULL, NULL, '2025-08-30 18:06:00', '2025-08-30 18:06:00'),
-	(7, 16, 6, 'approved', '2025-08-30 18:06:12', '2025-09-09 11:21:30', NULL, '2025-08-30 18:06:12', '2025-09-09 11:21:30');
+-- 테이블 데이터 hellchang.trainer_relationships:~0 rows (대략적) 내보내기
 
 -- 테이블 hellchang.trainer_schedules 구조 내보내기
 CREATE TABLE IF NOT EXISTS `trainer_schedules` (
@@ -1619,22 +1757,12 @@ CREATE TABLE IF NOT EXISTS `users` (
   KEY `idx_users_kakao_id` (`kakao_id`) USING BTREE
 ) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- 테이블 데이터 hellchang.users:~15 rows (대략적) 내보내기
+-- 테이블 데이터 hellchang.users:~5 rows (대략적) 내보내기
 INSERT IGNORE INTO `users` (`id`, `kakao_id`, `username`, `email`, `profile_image`, `created_at`, `updated_at`, `is_active`, `password`) VALUES
-	(6, 4351964716, '라그리마', 'kakao_4351964716@hellchang.com', 'http://k.kakaocdn.net/dn/cAmkWq/btsyPBsH7bM/MZvR2kmF4RaQGOPrEEyfp1/img_640x640.jpg', '2025-08-28 00:52:05', '2025-09-24 08:28:39', 1, NULL),
-	(7, 1000000001, '김태희', 'kimtaehee@hellchang.com', 'https://example.com/profiles/kimtaehee.jpg', '2025-08-30 08:32:37', '2025-08-30 08:32:37', 1, NULL),
-	(8, 1000000002, '현빈', 'hyunbin@hellchang.com', 'https://example.com/profiles/hyunbin.jpg', '2025-08-30 08:32:37', '2025-08-30 08:32:37', 1, NULL),
-	(9, 1000000003, '손예진', 'sonyejin@hellchang.com', 'https://example.com/profiles/sonyejin.jpg', '2025-08-30 08:32:37', '2025-08-30 08:32:37', 1, NULL),
-	(10, 1000000004, '이병헌', 'leebyeongheon@hellchang.com', 'https://example.com/profiles/leebyeongheon.jpg', '2025-08-30 08:32:37', '2025-08-30 08:32:37', 1, NULL),
-	(11, 1000000005, '아이유', 'iu@hellchang.com', 'https://example.com/profiles/iu.jpg', '2025-08-30 08:32:37', '2025-08-30 08:32:37', 1, NULL),
-	(12, 1000000006, '방탄소년단', 'bts@hellchang.com', 'https://example.com/profiles/bts.jpg', '2025-08-30 08:32:37', '2025-08-30 08:32:37', 1, NULL),
-	(13, 1000000007, '블랙핑크', 'blackpink@hellchang.com', 'https://example.com/profiles/blackpink.jpg', '2025-08-30 08:32:37', '2025-08-30 08:32:37', 1, NULL),
-	(14, 1000000008, '손흥민', 'sonheungmin@hellchang.com', 'https://example.com/profiles/sonheungmin.jpg', '2025-08-30 08:32:37', '2025-08-30 08:32:37', 1, NULL),
-	(15, 1000000009, '김연아', 'kimyuna@hellchang.com', 'https://example.com/profiles/kimyuna.jpg', '2025-08-30 08:32:37', '2025-08-30 08:32:37', 1, NULL),
-	(16, 1000000010, '피지컬갤러리', 'physicalgallery@hellchang.com', 'https://example.com/profiles/physicalgallery.jpg', '2025-08-30 08:32:37', '2025-08-30 08:32:37', 1, NULL),
+	(6, 4351964716, '라그리마', 'kakao_4351964716@hellchang.com', 'http://k.kakaocdn.net/dn/cAmkWq/btsyPBsH7bM/MZvR2kmF4RaQGOPrEEyfp1/img_640x640.jpg', '2025-08-28 00:52:05', '2025-09-27 12:21:22', 1, NULL),
 	(17, 4413496390, '.', 'kakao_4413496390@hellchang.com', 'http://k.kakaocdn.net/dn/h5Oeg/btsP11A9ilg/Xxnll9wm3HAkxz6UJGxSf1/img_640x640.jpg', '2025-09-11 08:51:08', '2025-09-17 12:07:37', 1, NULL),
-	(18, 4463716208, '미해', 'kakao_4463716208@hellchang.com', 'http://k.kakaocdn.net/dn/GxDwV/btsOVE8WHAf/visV8NbLytnbHnh3RZcVl1/img_640x640.jpg', '2025-09-24 10:12:31', '2025-09-24 10:26:46', 1, NULL),
-	(19, 4463720048, '박은미', 'kakao_4463720048@hellchang.com', 'http://img1.kakaocdn.net/thumb/R640x640.q70/?fname=http://t1.kakaocdn.net/account_images/default_profile.jpeg', '2025-09-24 10:14:47', '2025-09-25 01:11:37', 1, NULL),
+	(18, 4463716208, '미해', 'kakao_4463716208@hellchang.com', 'http://k.kakaocdn.net/dn/GxDwV/btsOVE8WHAf/visV8NbLytnbHnh3RZcVl1/img_640x640.jpg', '2025-09-24 10:12:31', '2025-09-26 10:30:22', 1, NULL),
+	(19, 4463720048, '박은미', 'kakao_4463720048@hellchang.com', 'http://img1.kakaocdn.net/thumb/R640x640.q70/?fname=http://t1.kakaocdn.net/account_images/default_profile.jpeg', '2025-09-24 10:14:47', '2025-09-27 06:05:43', 1, NULL),
 	(20, 4463753934, '영남❤️', 'kakao_4463753934@hellchang.com', 'http://img1.kakaocdn.net/thumb/R640x640.q70/?fname=http://t1.kakaocdn.net/account_images/default_profile.jpeg', '2025-09-24 10:34:56', '2025-09-24 10:34:56', 1, NULL);
 
 /*!40103 SET TIME_ZONE=IFNULL(@OLD_TIME_ZONE, 'system') */;

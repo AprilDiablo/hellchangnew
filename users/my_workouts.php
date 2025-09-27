@@ -18,6 +18,34 @@ $pageSubtitle = '운동 기록을 확인해보세요';
 // 날짜 파라미터 (기본값: 오늘)
 $date = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
 
+// 달력 네비게이션 처리
+$selectedMonth = date('Y-m', strtotime($date));
+$currentDate = new DateTime($selectedMonth . '-01');
+
+// 선택된 날짜를 기준으로 한달 전/후 계산
+$selectedDate = new DateTime($date);
+$prevDate = clone $selectedDate;
+$prevDate->modify('-1 month');
+$nextDate = clone $selectedDate;
+$nextDate->modify('+1 month');
+
+// 해당 월의 마지막 날 확인
+$prevMonthLastDay = $prevDate->format('t');
+$nextMonthLastDay = $nextDate->format('t');
+
+// 선택된 날짜가 해당 월에 존재하지 않으면 마지막 날로 조정
+if ($selectedDate->format('d') > $prevMonthLastDay) {
+    $prevDate->setDate($prevDate->format('Y'), $prevDate->format('m'), $prevMonthLastDay);
+}
+if ($selectedDate->format('d') > $nextMonthLastDay) {
+    $nextDate->setDate($nextDate->format('Y'), $nextDate->format('m'), $nextMonthLastDay);
+}
+
+$prevMonth = $prevDate->format('Y-m');
+$nextMonth = $nextDate->format('Y-m');
+$prevDateStr = $prevDate->format('Y-m-d');
+$nextDateStr = $nextDate->format('Y-m-d');
+
 $message = isset($_GET['message']) ? $_GET['message'] : '';
 $error = '';
 
@@ -521,6 +549,84 @@ foreach ($allMuscleAnalysis as $muscleCode => $muscleData) {
     $totalPlannedWeightedVolume += $muscleData['weighted_volume'];
 }
 
+// 주차별 달력 데이터 생성
+$weeklyCalendar = [];
+$currentMonth = new DateTime($selectedMonth . '-01');
+$lastDayOfMonth = new DateTime($selectedMonth . '-' . $currentMonth->format('t'));
+
+// 해당 월의 첫 번째 주 시작일 찾기 (월요일부터 시작)
+$firstMonday = clone $currentMonth;
+$firstMonday->modify('monday this week');
+if ($firstMonday->format('Y-m') !== $selectedMonth) {
+    $firstMonday->modify('next monday');
+}
+
+// 해당 월의 마지막 주 일요일 찾기
+$lastSunday = clone $lastDayOfMonth;
+$lastSunday->modify('sunday this week');
+if ($lastSunday->format('Y-m') !== $selectedMonth) {
+    $lastSunday->modify('last sunday');
+}
+
+// 운동한 날짜별 데이터 수집 (이번 달) - 세션 기준으로 먼저 조회
+$stmt = $pdo->prepare('
+    SELECT 
+        ws.workout_date,
+        COUNT(DISTINCT ws.session_id) as session_count,
+        SUM(ws.duration) as total_duration,
+        AVG(ws.duration) as avg_duration,
+        MIN(ws.start_time) as first_start_time,
+        MAX(ws.end_time) as last_end_time
+    FROM m_workout_session ws
+    WHERE ws.user_id = ? AND DATE_FORMAT(ws.workout_date, "%Y-%m") = ?
+    GROUP BY ws.workout_date
+    ORDER BY ws.workout_date DESC
+');
+$stmt->execute([$user['id'], $selectedMonth]);
+$dailyWorkouts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$weekNumber = 1;
+$currentWeek = clone $firstMonday;
+
+while ($currentWeek <= $lastSunday) {
+    $week = [];
+    $weekStart = clone $currentWeek;
+    
+    // 일주일 (월~일) 데이터 생성
+    for ($i = 0; $i < 7; $i++) {
+        $day = clone $currentWeek;
+        $day->modify("+{$i} days");
+        $dateStr = $day->format('Y-m-d');
+        
+        // 해당 날짜의 운동 데이터 찾기
+        $workoutData = null;
+        foreach ($dailyWorkouts as $workout) {
+            if ($workout['workout_date'] === $dateStr) {
+                $workoutData = $workout;
+                break;
+            }
+        }
+        
+        $week[] = [
+            'date' => $dateStr,
+            'day_name' => $day->format('D'),
+            'day_number' => $day->format('j'),
+            'is_current_month' => $day->format('Y-m') === $selectedMonth,
+            'has_workout' => $workoutData !== null,
+            'workout_data' => $workoutData
+        ];
+    }
+    
+    $weeklyCalendar[] = [
+        'week_number' => $weekNumber,
+        'week_start' => $weekStart->format('Y-m-d'),
+        'days' => $week
+    ];
+    
+    $weekNumber++;
+    $currentWeek->modify('+1 week');
+}
+
 // 근육별 퍼센트 계산 (전체 계획 대비 수행률)
 foreach ($performanceByMuscle as $muscleCode => &$data) {
     $data['percentage'] = $totalPlannedWeightedVolume > 0 ? 
@@ -593,57 +699,97 @@ include 'header.php';
     </div>
 <?php endif; ?>
 
-<!-- 날짜 네비게이션 -->
-<div class="date-navigation">
-    <a href="?date=<?= date('Y-m-d', strtotime($date . ' -1 day')) ?>" class="btn btn-outline-primary btn-custom">
-        <i class="fas fa-chevron-left"></i>
-    </a>
-    <div class="date-display">
-        <input type="date" id="datePicker" value="<?= $date ?>" onchange="changeDate(this.value)" class="form-control">
-    </div>
-    <a href="?date=<?= date('Y-m-d', strtotime($date . ' +1 day')) ?>" class="btn btn-outline-primary btn-custom">
-        <i class="fas fa-chevron-right"></i>
-    </a>
-</div>
 
 
 
-<?php if (!empty($workoutSessions)): ?>
-    <!-- 오늘 날짜 세션 목록만 표시 (최신이 위로, 회차는 4,3,2,1) -->
-    <?php 
-    $totalSessions = count($workoutSessions);
-    foreach ($workoutSessions as $idx => $session): 
-        $roundNumber = $totalSessions - $idx;
-    ?>
-        <div class="card mb-2">
-            <div class="card-body d-flex justify-content-between align-items-center">
-                <a href="my_workouts_ing.php?session_id=<?= $session['session_id'] ?>" class="text-decoration-none text-dark flex-grow-1">
-                    <div>
-                        <strong><?= $roundNumber ?>회차</strong>
-                        <span class="text-muted ms-2">운동 수: <?= (int)$session['exercise_count'] ?></span>
-                    </div>
+<!-- 달력 -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <a href="?date=<?= $prevDateStr ?>" class="btn btn-outline-light btn-sm">
+                    <i class="fas fa-chevron-left"></i>
                 </a>
-                <div class="btn-group btn-group-sm ms-3">
-                    <a href="today.php?edit_session=<?= $session['session_id'] ?>" 
-                       class="btn btn-outline-primary btn-sm">
-                        <i class="fas fa-edit"></i> 수정
-                    </a>
-                    <button type="button" class="btn btn-outline-danger btn-sm" 
-                            onclick="deleteSession(<?= $session['session_id'] ?>)">
-                        <i class="fas fa-trash"></i> 삭제
-                    </button>
+                <h6 class="mb-0"><?= date('Y년 m월 d일', strtotime($date)) ?> (<?= ['일', '월', '화', '수', '목', '금', '토'][date('w', strtotime($date))] ?>)</h6>
+                <a href="?date=<?= $nextDateStr ?>" class="btn btn-outline-light btn-sm">
+                    <i class="fas fa-chevron-right"></i>
+                </a>
+            </div>
+            <div class="card-body p-2">
+                <div id="weeklyWorkoutCalendar">
+                    <?php foreach ($weeklyCalendar as $week): ?>
+                    <div class="week-row">
+                        <div class="week-header mb-2" style="display: none;">
+                            <!-- 주차 표시 제거 - 공간 절약 -->
+                        </div>
+                        <div class="week-days d-flex">
+                            <?php foreach ($week['days'] as $day): ?>
+                            <div class="day-cell <?= $day['is_current_month'] ? 'current-month' : 'other-month' ?> <?= $day['has_workout'] ? 'has-workout' : 'no-workout' ?> <?= $day['date'] == $date ? 'selected' : '' ?> <?= $day['date'] == date('Y-m-d') ? 'today' : '' ?>" 
+                                 onclick="goToDate('<?= $day['date'] ?>')" 
+                                 style="cursor: pointer;">
+                                <div class="day-name"><?= $day['day_name'] ?></div>
+                                <div class="day-number"><?= $day['day_number'] ?></div>
+                                <?php if ($day['has_workout']): ?>
+                                    <div class="workout-indicator">
+                                        <i class="fas fa-dumbbell"></i>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
                 </div>
             </div>
         </div>
-    <?php endforeach; ?>
-<?php else: ?>
-    <div class="alert alert-info">
-        해당 날짜에 운동 세션이 없습니다.
     </div>
-<?php endif; ?>
+</div>
 
-<!-- 전체 운동 분석 -->
-<?php if (!empty($allMuscleAnalysis)): ?>
+
+<div class="workout-sessions-container">
+    <?php if (!empty($workoutSessions)): ?>
+        <!-- 오늘 날짜 세션 목록만 표시 (최신이 위로, 회차는 4,3,2,1) -->
+        <?php 
+        $totalSessions = count($workoutSessions);
+        foreach ($workoutSessions as $idx => $session): 
+            $roundNumber = $totalSessions - $idx;
+        ?>
+            <div class="card mb-3">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <a href="my_workouts_ing.php?session_id=<?= $session['session_id'] ?>" class="text-decoration-none text-dark flex-grow-1">
+                        <div>
+                            <h6 class="mb-1">
+                                <i class="fas fa-dumbbell text-primary me-2"></i>
+                                <strong><?= $roundNumber ?>회차</strong>
+                            </h6>
+                            <small class="text-muted">
+                                <i class="fas fa-list me-1"></i>
+                                운동 수: <?= (int)$session['exercise_count'] ?>개
+                            </small>
+                        </div>
+                    </a>
+                    <div class="btn-group btn-group-sm ms-3">
+                        <a href="today.php?edit_session=<?= $session['session_id'] ?>" 
+                           class="btn btn-outline-primary btn-sm">
+                            <i class="fas fa-edit"></i> 수정
+                        </a>
+                        <button type="button" class="btn btn-outline-danger btn-sm" 
+                                onclick="deleteSession(<?= $session['session_id'] ?>)">
+                            <i class="fas fa-trash"></i> 삭제
+                        </button>
+                    </div>
+                </div>
+            </div>
+        <?php endforeach; ?>
+    <?php else: ?>
+        <div class="alert alert-info text-center">
+            해당 날짜에 운동 세션이 없습니다.
+        </div>
+    <?php endif; ?>
+</div>
+
+<!-- 전체 운동 분석 (숨김) -->
+<?php if (false && !empty($allMuscleAnalysis)): ?>
     <div class="card mb-3">
         <div class="card-header">
             <h5 class="text-primary mb-0">
@@ -958,12 +1104,6 @@ include 'header.php';
     </div>
 <?php endif; ?>
 
-<!-- 운동 추가 버튼 -->
-<div class="text-center mt-4">
-    <a href="today.php?date=<?= $date ?>" class="btn btn-primary btn-lg">
-        <i class="fas fa-plus"></i> 이 날에 운동 추가하기
-    </a>
-</div>
 
 
 <?php if (!$listOnly && !empty($sessionsWithExercises)): ?>
@@ -1035,8 +1175,8 @@ include 'header.php';
     </div>
     <?php endforeach; ?>
     
-    <!-- 전체 운동 분석 (한 번만 표시) -->
-    <?php if (!empty($allMuscleAnalysis)): ?>
+    <!-- 전체 운동 분석 (한 번만 표시) (숨김) -->
+    <?php if (false && !empty($allMuscleAnalysis)): ?>
         <div class="card mb-3">
             <div class="card-header">
                 <h5 class="text-primary mb-0">
@@ -1391,13 +1531,21 @@ include 'header.php';
     </div>
 </div>
 
+<!-- 운동 추가 버튼 (최하단) -->
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between">
+        <a href="today.php?date=<?= $date ?>" class="btn btn-primary">
+            <i class="fas fa-plus"></i> 운동 추가하기
+        </a>
+        <a href="?date=<?= date('Y-m-d') ?>" class="btn btn-outline-warning fw-bold">
+            오늘
+        </a>
+    </div>
+</div>
+
 <?php include 'footer.php'; ?>
 
 <script>
-// 날짜 변경 함수
-function changeDate(dateString) {
-    window.location.href = '?date=' + dateString;
-}
 
 // 운동 세션 삭제
 function deleteSession(sessionId) {
@@ -1679,9 +1827,52 @@ function closeModalWithoutSave() {
         bootstrap.Modal.getInstance(document.getElementById('exerciseModal')).hide();
     }
 }
+
+// 달력 날짜 클릭 함수
+function goToDate(date) {
+    // 날짜 제목 업데이트
+    const dateTitle = document.getElementById('selectedDateTitle');
+    if (dateTitle) {
+        const dateObj = new Date(date);
+        const formattedDate = dateObj.toLocaleDateString('ko-KR', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+        const dayName = dayNames[dateObj.getDay()];
+        dateTitle.innerHTML = `<i class="fas fa-calendar-day"></i> ${formattedDate} (${dayName})`;
+        
+        // 운동 추가 버튼의 href도 업데이트
+        const addButton = document.querySelector('.btn-primary[href*="today.php"]');
+        if (addButton) {
+            addButton.href = `today.php?date=${date}`;
+        }
+    }
+    
+    // AJAX로 해당 날짜의 운동 기록을 가져와서 표시
+    fetch(`get_workout_sessions.php?date=${date}`)
+        .then(response => response.text())
+        .then(html => {
+            // 운동 세션 목록 영역을 업데이트
+            const sessionContainer = document.querySelector('.workout-sessions-container');
+            if (sessionContainer) {
+                sessionContainer.innerHTML = html;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            // 에러 시 기존 방식으로 페이지 이동
+            window.location.href = '?date=' + date;
+        });
+}
 </script>
 
 <style>
+.card {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+}
+
 .sets-circles {
     display: flex;
     justify-content: center;
@@ -1722,6 +1913,95 @@ function closeModalWithoutSave() {
     color: white;
     border-color: #28a745;
     cursor: default;
+}
+
+/* 주차별 달력 스타일 */
+.week-row {
+    /* 경계선 제거 - 더 깔끔한 디자인 */
+    padding-bottom: 3px;
+}
+
+.week-days {
+    gap: 2px;
+}
+
+.day-cell {
+    flex: 1;
+    height: 60px;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.day-cell:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.day-cell.current-month {
+    background-color: #ffffff;
+}
+
+.day-cell.other-month {
+    background-color: #f8f9fa;
+    opacity: 0.6;
+}
+
+.day-cell.has-workout {
+    background-color: #d4edda !important;
+    border-color: #28a745 !important;
+    font-weight: bold;
+}
+
+.day-cell.no-workout {
+    opacity: 0.5;
+}
+
+.day-cell.selected {
+    font-weight: bold;
+}
+
+.day-cell.today {
+    color: #ff8c00 !important;
+    font-weight: bold;
+}
+
+.day-name {
+    font-size: 10px;
+    font-weight: bold;
+    margin-bottom: 2px;
+}
+
+.day-number {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.workout-indicator {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    font-size: 8px;
+    color: #28a745;
+}
+
+@media (max-width: 768px) {
+    .day-cell {
+        height: 50px;
+    }
+    
+    .day-name {
+        font-size: 9px;
+    }
+    
+    .day-number {
+        font-size: 12px;
+    }
 }
 
 .set-circle.completed:hover {
