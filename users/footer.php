@@ -6,37 +6,37 @@
             <div class="row">
                 <div class="col">
                     <a href="today.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'today.php' ? 'active' : '' ?>">
-                        <i class="fas fa-plus-circle"></i>
+                        <span style="font-size: 1.2em;">➕</span>
                         <span>입력</span>
                     </a>
                 </div>
                 <div class="col">
                     <a href="my_workouts.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'my_workouts.php' ? 'active' : '' ?>">
-                        <i class="fas fa-calendar-check"></i>
+                        <span style="font-size: 1.2em;">📅</span>
                         <span>오늘</span>
                     </a>
                 </div>
                 <div class="col">
                     <a href="history.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'history.php' ? 'active' : '' ?>">
-                        <i class="fas fa-history"></i>
+                        <span style="font-size: 1.2em;">📋</span>
                         <span>전체</span>
                     </a>
                 </div>
                 <div class="col">
                     <a href="trainer_request.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'trainer_request.php' ? 'active' : '' ?>">
-                        <i class="fas fa-user-tie"></i>
+                        <span style="font-size: 1.2em;">👥</span>
                         <span>친구</span>
                     </a>
                 </div>
                 <div class="col">
                     <a href="stats.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'stats.php' ? 'active' : '' ?>">
-                        <i class="fas fa-chart-bar"></i>
+                        <span style="font-size: 1.2em;">📊</span>
                         <span>통계</span>
                     </a>
                 </div>
                 <div class="col">
                     <a href="profile.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'profile.php' ? 'active' : '' ?>">
-                        <i class="fas fa-user-cog"></i>
+                        <span style="font-size: 1.2em;">⚙️</span>
                         <span>설정</span>
                     </a>
                 </div>

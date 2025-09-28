@@ -693,6 +693,28 @@ foreach ($workoutSessions as $index => $session) {
     $preRoutine = $routineSettings['pre_routine'] ?? '';
     $postRoutine = $routineSettings['post_routine'] ?? '';
     
+    // 해당 세션의 루틴 기록 가져오기
+    $stmt = $pdo->prepare("
+        SELECT routine_type, routine_name, routine_content, is_completed, start_time, end_time, duration
+        FROM m_routine_records 
+        WHERE session_id = ? 
+        ORDER BY routine_type, created_at DESC
+    ");
+    $stmt->execute([$session['session_id']]);
+    $routineRecords = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // 루틴 기록을 타입별로 정리
+    $preRoutineRecord = null;
+    $postRoutineRecord = null;
+    
+    foreach ($routineRecords as $record) {
+        if ($record['routine_type'] === 'pre') {
+            $preRoutineRecord = $record;
+        } else if ($record['routine_type'] === 'post') {
+            $postRoutineRecord = $record;
+        }
+    }
+    
     $sessionsWithExercises[] = [
         'session' => $session,
         'exercises' => $exercises,
@@ -700,7 +722,9 @@ foreach ($workoutSessions as $index => $session) {
         'session_volume' => $sessionVolume,
         'session_percentage' => $totalDayVolume > 0 ? round(($sessionVolume / $totalDayVolume) * 100, 1) : 0,
         'pre_routine' => $preRoutine,
-        'post_routine' => $postRoutine
+        'post_routine' => $postRoutine,
+        'pre_routine_record' => $preRoutineRecord,
+        'post_routine_record' => $postRoutineRecord
     ];
 }
 
@@ -905,13 +929,78 @@ include 'header.php';
 <?php if (!empty($sessionsWithExercises)): ?>
     <!-- 각 세션별 운동 목록 -->
     <?php foreach ($sessionsWithExercises as $sessionData): ?>
+    
+    <!-- 프리루틴 -->
+    <?php if (!empty($sessionData['pre_routine'])): ?>
+    <div class="mb-3">
+        <?php if ($sessionData['pre_routine_record']): ?>
+            <!-- 루틴 기록이 있는 경우 -->
+            <div class="card border-left-success">
+                <div class="card-body">
+                    <!-- 첫 번째 줄: 루틴 제목, 완료 상태, 시간 -->
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="mb-0">
+                            <i class="fas fa-check-circle text-success"></i> 
+                            <strong>PRE-ROUTINE</strong>
+                            <?php if ($sessionData['pre_routine_record']['is_completed']): ?>
+                                <span class="badge bg-success ms-2">완료</span>
+                            <?php else: ?>
+                                <span class="badge bg-warning text-dark ms-2">취소</span>
+                            <?php endif; ?>
+                        </h5>
+                        <div class="text-muted">
+                            <i class="fas fa-clock"></i> 
+                            <?= gmdate('i:s', $sessionData['pre_routine_record']['duration']) ?>
+                        </div>
+                    </div>
+                    
+                    <!-- 두 번째 줄: 내용과 다시 시작 버튼 -->
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="flex-grow-1 me-3">
+                            <p class="text-muted mb-0"><?= nl2br(htmlspecialchars($sessionData['pre_routine'])) ?></p>
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-outline-warning btn-sm" onclick="showRoutineRestartModal('pre', <?= $sessionData['session']['session_id'] ?>)">
+                                <i class="fas fa-redo"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <?php else: ?>
+            <!-- 루틴 기록이 없는 경우 (시작 버튼) -->
+            <div class="card border-left-warning">
+                <div class="card-body text-center">
+                    <h5 class="mb-3">
+                        <i class="fas fa-play-circle text-warning"></i> 
+                        <strong>PRE-ROUTINE</strong>
+                    </h5>
+                    <p class="text-muted mb-3"><?= nl2br(htmlspecialchars($sessionData['pre_routine'])) ?></p>
+                    <button type="button" class="btn btn-warning btn-lg" onclick="startRoutine('pre', <?= $sessionData['session']['session_id'] ?>)">
+                        <i class="fas fa-play"></i> 프리루틴 시작
+                    </button>
+                </div>
+            </div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
     <!-- 1. 본운동 타이틀 -->
     <div class="mb-3">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h4 class="mb-0"><i class="fas fa-dumbbell"></i> 본운동</h4>
+                <h4 class="mb-0">
+                    <i class="fas fa-dumbbell"></i> 본운동 - 
+                    <?php 
+                    $workoutDate = $sessionData['session']['workout_date'];
+                    $month = date('n', strtotime($workoutDate));
+                    $day = date('j', strtotime($workoutDate));
+                    $round = $sessionData['round'];
+                    echo $month . '월' . $day . '일 ' . $round . '회차';
+                    ?>
+                </h4>
                 <button type="button" class="btn btn-outline-light btn-sm" onclick="openAddExerciseModal()">
-                    <i class="fas fa-plus"></i> 운동 추가
+                    <i class="fas fa-plus"></i>
                 </button>
             </div>
         </div>
@@ -928,14 +1017,14 @@ include 'header.php';
                         $colors = ['bg-primary', 'bg-success', 'bg-warning', 'bg-danger', 'bg-info', 'bg-secondary', 'bg-dark'];
                         $colorClass = $colors[($index) % count($colors)];
                         ?>
-                        <span class="badge <?= $colorClass ?> me-2"><?= $index + 1 ?></span>
-                        <strong><?= htmlspecialchars($exercise['name_kr']) ?></strong>
+                        <span class="badge <?= $colorClass ?> me-2" style="font-size: 1.05em; padding: 0.35em 0.5em;"><?= $index + 1 ?></span>
+                        <strong style="font-size: 1.1em;"><?= htmlspecialchars($exercise['name_kr']) ?></strong>
                         <?php if ($exercise['is_temp']): ?>
                             <span class="badge bg-warning text-dark ms-2">임시</span>
                         <?php endif; ?>
                     </h5>
                     <div class="text-muted text-end">
-                        <div class="fs-5"><?= number_format($exercise['weight'], 0) ?>kg × <?= $exercise['reps'] ?>회 × <?= $exercise['sets'] ?>세트</div>
+                        <div class="fs-5" style="font-weight: 700;"><?= number_format($exercise['weight'], 0) ?>kg × <?= $exercise['reps'] ?>회 × <?= $exercise['sets'] ?>세트</div>
                         <?php if ($exercise['note']): ?>
                             <div class="mt-2"><em class="fs-5"><?= htmlspecialchars($exercise['note']) ?></em></div>
                         <?php endif; ?>
@@ -958,7 +1047,7 @@ include 'header.php';
                                 title="<?= $exercise['is_completed'] ? '완료됨' : '미완료' ?>"
                                 onclick="loadCompletedExercise(<?= $exercise['wx_id'] ?>)">
                             <i class="fas fa-check"></i>
-                            <span class="ms-1"><?= $exercise['completed_sets'] ?>/<?= $exercise['sets'] ?></span>
+                            <span class="ms-1 fw-bold" style="font-size: 1.1em;"><?= $exercise['completed_sets'] ?>/<?= $exercise['sets'] ?></span>
                         </button>
                     </div>
                 </div>
@@ -967,34 +1056,60 @@ include 'header.php';
     </div>
     <?php endforeach; ?>
     
-            
-            <!-- 3. 엔드루틴 -->
-            <?php if (!empty($postRoutine)): ?>
-            <div class="mb-4" style="display: none;">
-                <div class="card">
-                    <div class="card-header bg-success text-white">
-                        <h6 class="mb-0"><i class="fas fa-stop"></i> 엔드루틴 (운동 후)</h6>
+    <!-- 포스트루틴 -->
+    <?php if (!empty($sessionData['post_routine'])): ?>
+    <div class="mb-3">
+        <?php if ($sessionData['post_routine_record']): ?>
+            <!-- 루틴 기록이 있는 경우 -->
+            <div class="card border-left-success">
+                <div class="card-body">
+                    <!-- 첫 번째 줄: 루틴 제목, 완료 상태, 시간 -->
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="mb-0">
+                            <i class="fas fa-check-circle text-success"></i> 
+                            <strong>POST-ROUTINE</strong>
+                            <?php if ($sessionData['post_routine_record']['is_completed']): ?>
+                                <span class="badge bg-success ms-2">완료</span>
+                            <?php else: ?>
+                                <span class="badge bg-warning text-dark ms-2">취소</span>
+                            <?php endif; ?>
+                        </h5>
+                        <div class="text-muted">
+                            <i class="fas fa-clock"></i> 
+                            <?= gmdate('i:s', $sessionData['post_routine_record']['duration']) ?>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <div class="routine-content"><?= nl2br(htmlspecialchars($postRoutine)) ?></div>
+                    
+                    <!-- 두 번째 줄: 내용과 다시 시작 버튼 -->
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="flex-grow-1 me-3">
+                            <p class="text-muted mb-0"><?= nl2br(htmlspecialchars($sessionData['post_routine'])) ?></p>
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-outline-success btn-sm" onclick="showRoutineRestartModal('post', <?= $sessionData['session']['session_id'] ?>)">
+                                <i class="fas fa-redo"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
-            <?php endif; ?>
-            
-            <!-- 4. 프리루틴 -->
-            <?php if (!empty($preRoutine)): ?>
-            <div class="mb-4" style="display: none;">
-                <div class="card">
-                    <div class="card-header bg-primary text-white">
-                        <h6 class="mb-0"><i class="fas fa-play"></i> 프리루틴 (운동 전)</h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="routine-content"><?= nl2br(htmlspecialchars($preRoutine)) ?></div>
-                    </div>
+        <?php else: ?>
+            <!-- 루틴 기록이 없는 경우 (시작 버튼) -->
+            <div class="card border-left-success">
+                <div class="card-body text-center">
+                    <h5 class="mb-3">
+                        <i class="fas fa-stop-circle text-success"></i> 
+                        <strong>POST-ROUTINE</strong>
+                    </h5>
+                    <p class="text-muted mb-3"><?= nl2br(htmlspecialchars($sessionData['post_routine'])) ?></p>
+                    <button type="button" class="btn btn-success btn-lg" onclick="startRoutine('post', <?= $sessionData['session']['session_id'] ?>)">
+                        <i class="fas fa-play"></i> 포스트루틴 시작
+                    </button>
                 </div>
             </div>
-            <?php endif; ?>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
             
             <!-- 5. 운동 시간 정보 -->
             <div class="workout-time-edit mb-3" style="display: none;">
@@ -1064,9 +1179,321 @@ include 'header.php';
     </div>
 </div>
 
+<!-- 루틴 다시 시작 선택 모달 -->
+<div class="modal fade" id="routineRestartModal" tabindex="-1" aria-labelledby="routineRestartModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-redo"></i> 루틴 다시 시작
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">루틴을 다시 시작하시겠습니까?</p>
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>주의:</strong> 기존 루틴 기록을 어떻게 처리할지 선택해주세요.
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="radio" name="restartOption" id="optionNew" value="new" checked>
+                    <label class="form-check-label" for="optionNew">
+                        <strong>새 기록 추가</strong> - 기존 기록은 유지하고 새로운 기록을 추가합니다
+                    </label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="restartOption" id="optionReplace" value="replace">
+                    <label class="form-check-label" for="optionReplace">
+                        <strong>기존 기록 덮어쓰기</strong> - 기존 기록을 삭제하고 새로운 기록으로 교체합니다
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="confirmRoutineRestart()">
+                    <i class="fas fa-play"></i> 시작
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 루틴 타이머 모달 -->
+<div class="modal fade" id="routineModal" tabindex="-1" aria-labelledby="routineModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="routineModalTitle">
+                    <i class="fas fa-clock"></i> 루틴 진행 중
+                </h5>
+            </div>
+            <div class="modal-body text-center">
+                <div class="mb-4">
+                    <div class="display-1 text-primary" id="routineTimer">00:00</div>
+                </div>
+                <div class="mb-3">
+                    <h6 id="routineType">PRE-ROUTINE</h6>
+                    <p class="text-muted" id="routineContent"></p>
+                </div>
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> 루틴을 완료하시면 "완료" 버튼을 눌러주세요.
+                </div>
+            </div>
+            <div class="modal-footer justify-content-center">
+                <button type="button" class="btn btn-success btn-lg" onclick="completeRoutine()">
+                    <i class="fas fa-check"></i> 완료
+                </button>
+                <button type="button" class="btn btn-secondary btn-lg" onclick="cancelRoutine()">
+                    <i class="fas fa-times"></i> 취소
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php include 'footer.php'; ?>
 
 <script>
+// 루틴 타이머 관련 변수
+let routineTimer = null;
+let routineStartTime = null;
+let currentRoutineType = null;
+let currentSessionId = null;
+let restartOption = 'new'; // 'new' 또는 'replace'
+
+// 루틴 다시 시작 선택 모달 표시
+function showRoutineRestartModal(type, sessionId) {
+    currentRoutineType = type;
+    currentSessionId = sessionId;
+    
+    // 기본값으로 "새 기록 추가" 선택
+    document.getElementById('optionNew').checked = true;
+    restartOption = 'new';
+    
+    const modal = new bootstrap.Modal(document.getElementById('routineRestartModal'));
+    modal.show();
+}
+
+// 루틴 다시 시작 확인
+function confirmRoutineRestart() {
+    // 선택된 옵션 확인
+    const selectedOption = document.querySelector('input[name="restartOption"]:checked');
+    restartOption = selectedOption.value;
+    
+    // 다시 시작 모달 닫기
+    const restartModal = bootstrap.Modal.getInstance(document.getElementById('routineRestartModal'));
+    restartModal.hide();
+    
+    // 기존 기록 삭제 옵션이면 먼저 삭제
+    if (restartOption === 'replace') {
+        deleteExistingRoutineRecord();
+    } else {
+        // 새 기록 추가 옵션이면 바로 시작
+        startRoutineTimer();
+    }
+}
+
+// 기존 루틴 기록 삭제
+function deleteExistingRoutineRecord() {
+    fetch('delete_routine_record.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            session_id: currentSessionId,
+            routine_type: currentRoutineType
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('기존 루틴 기록이 삭제되었습니다.');
+            startRoutineTimer();
+        } else {
+            console.error('기존 루틴 기록 삭제 실패:', data.message);
+            alert('기존 루틴 기록 삭제에 실패했습니다: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('네트워크 오류가 발생했습니다.');
+    });
+}
+
+// 루틴 시작 함수
+function startRoutine(type, sessionId) {
+    currentRoutineType = type;
+    currentSessionId = sessionId;
+    routineStartTime = new Date();
+    restartOption = 'new'; // 새로 시작하는 경우는 항상 새 기록 추가
+    
+    // 모달 제목과 내용 설정
+    const modalTitle = document.getElementById('routineModalTitle');
+    const routineType = document.getElementById('routineType');
+    const routineContent = document.getElementById('routineContent');
+    
+    if (type === 'pre') {
+        modalTitle.innerHTML = '<i class="fas fa-play-circle"></i> PRE-ROUTINE 진행 중';
+        routineType.textContent = 'PRE-ROUTINE';
+        routineContent.textContent = '운동 전 준비 루틴을 시작합니다.';
+    } else {
+        modalTitle.innerHTML = '<i class="fas fa-stop-circle"></i> POST-ROUTINE 진행 중';
+        routineType.textContent = 'POST-ROUTINE';
+        routineContent.textContent = '운동 후 마무리 루틴을 시작합니다.';
+    }
+    
+    // 타이머 시작
+    startRoutineTimer();
+    
+    // 모달 표시
+    const modal = new bootstrap.Modal(document.getElementById('routineModal'));
+    modal.show();
+}
+
+// 루틴 타이머 시작 함수
+function startRoutineTimer() {
+    routineStartTime = new Date();
+    
+    // 타이머 시작
+    routineTimer = setInterval(function() {
+        const now = new Date();
+        const elapsed = Math.floor((now - routineStartTime) / 1000);
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        
+        const timeString = String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+        document.getElementById('routineTimer').textContent = timeString;
+    }, 1000);
+    
+    // 타이머 모달 표시
+    const modal = new bootstrap.Modal(document.getElementById('routineModal'));
+    modal.show();
+}
+
+
+// 루틴 완료
+function completeRoutine() {
+    if (routineTimer) {
+        clearInterval(routineTimer);
+        routineTimer = null;
+    }
+    
+    const endTime = new Date();
+    const duration = Math.floor((endTime - routineStartTime) / 1000);
+    
+    // 서버에 루틴 완료 정보 전송
+    saveRoutineRecord(true, duration, restartOption);
+    
+    // 모달 닫기
+    const modal = bootstrap.Modal.getInstance(document.getElementById('routineModal'));
+    modal.hide();
+    
+    // 성공 메시지 표시
+    showAlert('success', '루틴이 완료되었습니다!');
+}
+
+// 루틴 취소
+function cancelRoutine() {
+    if (routineTimer) {
+        clearInterval(routineTimer);
+        routineTimer = null;
+    }
+    
+    const endTime = new Date();
+    const duration = Math.floor((endTime - routineStartTime) / 1000);
+    
+    // 서버에 루틴 취소 정보 전송
+    saveRoutineRecord(false, duration, restartOption);
+    
+    // 모달 닫기
+    const modal = bootstrap.Modal.getInstance(document.getElementById('routineModal'));
+    modal.hide();
+}
+
+// 루틴 기록 저장
+function saveRoutineRecord(isCompleted, duration, option = 'new') {
+    console.log('저장할 데이터:', {
+        session_id: currentSessionId,
+        routine_type: currentRoutineType,
+        is_completed: isCompleted,
+        duration: duration,
+        option: option
+    });
+    
+    fetch('save_routine_record.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            session_id: currentSessionId,
+            routine_type: currentRoutineType,
+            is_completed: isCompleted,
+            duration: duration,
+            option: option
+        })
+    })
+    .then(response => {
+        console.log('서버 응답 상태:', response.status);
+        console.log('응답 Content-Type:', response.headers.get('content-type'));
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        return response.text().then(text => {
+            console.log('서버 응답 원본:', text);
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                console.error('JSON 파싱 오류:', e);
+                console.error('파싱할 텍스트:', text);
+                throw new Error('서버 응답을 파싱할 수 없습니다: ' + text);
+            }
+        });
+    })
+    .then(data => {
+        console.log('서버 응답 데이터:', data);
+        if (data && data.success) {
+            console.log('루틴 기록이 저장되었습니다.');
+            // 페이지 새로고침하여 기록 표시
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            console.error('루틴 기록 저장 실패:', data?.message || '알 수 없는 오류');
+            alert('루틴 기록 저장에 실패했습니다: ' + (data?.message || '알 수 없는 오류'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('네트워크 오류가 발생했습니다.');
+    });
+}
+
+// 알림 표시 함수
+function showAlert(type, message) {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    // 페이지 상단에 알림 추가
+    const container = document.querySelector('.container-fluid');
+    container.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    // 3초 후 자동으로 사라지게 함
+    setTimeout(() => {
+        const alert = container.querySelector('.alert');
+        if (alert) {
+            alert.remove();
+        }
+    }, 3000);
+}
+
 // 날짜 변경 함수
 function changeDate(dateString) {
     window.location.href = '?date=' + dateString;
@@ -1358,10 +1785,10 @@ function togglePartDetails(partName) {
             <div class="modal-body">
                 <!-- 운동 정보 -->
                 <div class="exercise-info mb-4 text-center position-relative">
-                    <button type="button" class="btn btn-outline-light btn-lg" id="modalExerciseInfo" onclick="openExerciseInfoModal()" style="pointer-events: auto; transition: none !important; background-color: transparent !important; border-color: #fff !important; color: #fff !important;">
+                    <button type="button" class="btn btn-outline-light btn-lg" id="modalExerciseInfo" onclick="openExerciseInfoModal()" style="pointer-events: auto; transition: none !important; background-color: transparent !important; border-color: #fff !important; color: #fff !important; font-size: 1.3rem !important; font-weight: bold !important;">
                         <i class="fas fa-edit"></i> 20kg × 15회 × 5세트
                     </button>
-                    <button type="button" class="btn btn-outline-light btn-lg position-absolute end-0" id="undoSetBtn" onclick="undoLastSet()" style="display: none; top: 50%; transform: translateY(-50%); position: absolute !important; pointer-events: auto; transition: none !important; background-color: transparent !important; border-color: #fff !important; color: #fff !important;">
+                    <button type="button" class="btn btn-outline-light btn-lg position-absolute end-0" id="undoSetBtn" onclick="undoLastSet()" style="display: none; top: 50%; transform: translateY(-50%); position: absolute !important; pointer-events: auto; transition: none !important; background-color: transparent !important; border-color: #fff !important; color: #fff !important; z-index: 1000;">
                         <i class="fas fa-backspace"></i>
                     </button>
                 </div>
@@ -1832,8 +2259,8 @@ function displayExerciseCard(exercise, searchResults, index) {
         <div class="card mb-3" data-index="${index}">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h6 class="mb-0">${exerciseName}</h6>
-                    <span class="badge bg-primary">${index + 1}</span>
+                    <h6 class="mb-0" style="font-size: 1.1em;">${exerciseName}</h6>
+                    <span class="badge bg-primary" style="font-size: 1.05em; padding: 0.35em 0.5em;">${index + 1}</span>
                 </div>
     `;
     
@@ -2894,13 +3321,70 @@ function updateOriginalExerciseList(exerciseId, weight, reps, sets) {
     margin-bottom: 5px;
 }
 
+/* 운동 정보 버튼 스타일 */
+#modalExerciseInfo {
+    font-size: 1.3rem !important;
+    font-weight: bold !important;
+    position: relative !important;
+}
+
+#modalExerciseInfo:active,
+#modalExerciseInfo:focus {
+    position: relative !important;
+    transform: none !important;
+}
+
 /* 호버 효과 완전 제거 */
-#modalExerciseInfo:hover,
-#undoSetBtn:hover {
+#modalExerciseInfo:hover {
     background-color: transparent !important;
     border-color: #fff !important;
     color: #fff !important;
     transform: none !important;
     box-shadow: none !important;
+    font-size: 1.3rem !important;
+    font-weight: bold !important;
+}
+
+#undoSetBtn:hover {
+    background-color: transparent !important;
+    border-color: #fff !important;
+    color: #fff !important;
+    transform: translateY(-50%) !important;
+    box-shadow: none !important;
+}
+
+/* 취소 버튼 위치 고정 */
+#undoSetBtn {
+    position: absolute !important;
+    top: 50% !important;
+    right: 0 !important;
+    transform: translateY(-50%) !important;
+    z-index: 1000 !important;
+}
+
+#undoSetBtn:active,
+#undoSetBtn:focus {
+    position: absolute !important;
+    top: 50% !important;
+    right: 0 !important;
+    transform: translateY(-50%) !important;
+    z-index: 1000 !important;
+}
+
+/* SB Admin 2 스타일 카드 */
+.card.border-left-primary {
+    border-left: 0.25rem solid #4e73df !important;
+}
+
+.card.border-left-success {
+    border-left: 0.25rem solid #1cc88a !important;
+}
+
+.border-left-primary {
+    border-left: 0.25rem solid #4e73df !important;
+}
+
+.border-left-success {
+    border-left: 0.25rem solid #1cc88a !important;
 }
 </style>

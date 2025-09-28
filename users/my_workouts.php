@@ -1830,8 +1830,20 @@ function closeModalWithoutSave() {
 
 // 달력 날짜 클릭 함수
 function goToDate(date) {
-    // 날짜 제목 업데이트
-    const dateTitle = document.getElementById('selectedDateTitle');
+    // 모든 날짜 셀에서 selected 클래스 제거
+    const allDayCells = document.querySelectorAll('.day-cell');
+    allDayCells.forEach(cell => {
+        cell.classList.remove('selected');
+    });
+    
+    // 클릭한 날짜 셀에 selected 클래스 추가
+    const clickedCell = document.querySelector(`[onclick="goToDate('${date}')"]`);
+    if (clickedCell) {
+        clickedCell.classList.add('selected');
+    }
+    
+    // 상단 날짜 제목 업데이트
+    const dateTitle = document.querySelector('.card-header h6');
     if (dateTitle) {
         const dateObj = new Date(date);
         const formattedDate = dateObj.toLocaleDateString('ko-KR', {
@@ -1841,13 +1853,13 @@ function goToDate(date) {
         });
         const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
         const dayName = dayNames[dateObj.getDay()];
-        dateTitle.innerHTML = `<i class="fas fa-calendar-day"></i> ${formattedDate} (${dayName})`;
-        
-        // 운동 추가 버튼의 href도 업데이트
-        const addButton = document.querySelector('.btn-primary[href*="today.php"]');
-        if (addButton) {
-            addButton.href = `today.php?date=${date}`;
-        }
+        dateTitle.innerHTML = `${formattedDate} (${dayName})`;
+    }
+    
+    // 운동 추가 버튼의 href도 업데이트
+    const addButton = document.querySelector('.btn-primary[href*="today.php"]');
+    if (addButton) {
+        addButton.href = `today.php?date=${date}`;
     }
     
     // AJAX로 해당 날짜의 운동 기록을 가져와서 표시
@@ -1963,7 +1975,10 @@ function goToDate(date) {
 }
 
 .day-cell.selected {
+    background-color: #007bff !important;
+    color: white !important;
     font-weight: bold;
+    border-color: #0056b3 !important;
 }
 
 .day-cell.today {
