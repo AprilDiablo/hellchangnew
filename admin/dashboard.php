@@ -324,6 +324,10 @@ try {
                                 <i class="fas fa-clipboard-list"></i>
                                 운동 템플릿 관리
                             </a>
+                            <a class="nav-link" href="temp_exercise_management.php">
+                                <i class="fas fa-clock"></i>
+                                임시 운동 관리
+                            </a>
                             <a class="nav-link" href="template_assignment.php">
                                 <i class="fas fa-user-plus"></i>
                                 템플릿 할당
@@ -481,6 +485,9 @@ try {
                                             </a>
                                             <a href="template_assignment.php" class="btn btn-success">
                                                 <i class="fas fa-user-plus me-2"></i>템플릿 할당
+                                            </a>
+                                            <a href="temp_exercise_management.php" class="btn btn-warning">
+                                                <i class="fas fa-clock me-2"></i>임시 운동 관리
                                             </a>
                                             <a href="schedule_management.php" class="btn btn-warning">
                                                 <i class="fas fa-calendar-alt me-2"></i>스케줄 관리

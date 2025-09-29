@@ -899,6 +899,36 @@ uasort($performanceByBodyPart, function($a, $b) {
 include 'header.php';
 ?>
 
+<!-- 앱바 스타일 제목 -->
+<?php if (isset($sessionData['session'])): ?>
+<div class="app-bar">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center py-3">
+                    <div class="d-flex align-items-center">
+                        <i class="fas fa-calendar-alt me-2 text-primary"></i>
+                        <h4 class="mb-0 fw-bold text-dark">
+                            <?php 
+                            $workoutDate = $sessionData['session']['workout_date'];
+                            $year = date('Y', strtotime($workoutDate));
+                            $month = date('n', strtotime($workoutDate));
+                            $day = date('j', strtotime($workoutDate));
+                            $round = $sessionData['round'];
+                            echo $year . '년 ' . $month . '월 ' . $day . '일 ' . $round . '회차';
+                            ?>
+                        </h4>
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goBack()">
+                        <i class="fas fa-arrow-left me-1"></i>뒤로가기
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- 메시지 표시 -->
 <?php if ($message): ?>
     <div class="alert alert-success alert-dismissible fade show" role="alert" id="messageAlert">
@@ -914,6 +944,7 @@ include 'header.php';
                 window.history.replaceState({}, document.title, url.pathname + url.search);
             }
         }, 100);
+        
     </script>
 <?php endif; ?>
 
@@ -990,14 +1021,7 @@ include 'header.php';
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h4 class="mb-0">
-                    <i class="fas fa-dumbbell"></i> 본운동 - 
-                    <?php 
-                    $workoutDate = $sessionData['session']['workout_date'];
-                    $month = date('n', strtotime($workoutDate));
-                    $day = date('j', strtotime($workoutDate));
-                    $round = $sessionData['round'];
-                    echo $month . '월' . $day . '일 ' . $round . '회차';
-                    ?>
+                    <i class="fas fa-dumbbell"></i> 본운동
                 </h4>
                 <button type="button" class="btn btn-outline-light btn-sm" onclick="openAddExerciseModal()">
                     <i class="fas fa-plus"></i>
@@ -1312,12 +1336,12 @@ function deleteExistingRoutineRecord() {
             startRoutineTimer();
         } else {
             console.error('기존 루틴 기록 삭제 실패:', data.message);
-            alert('기존 루틴 기록 삭제에 실패했습니다: ' + data.message);
+            showCustomAlert('기존 루틴 기록 삭제에 실패했습니다: ' + data.message, '삭제 실패', 'exclamation-triangle');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('네트워크 오류가 발생했습니다.');
+        showCustomAlert('네트워크 오류가 발생했습니다.', '네트워크 오류', 'exclamation-triangle');
     });
 }
 
@@ -1463,12 +1487,12 @@ function saveRoutineRecord(isCompleted, duration, option = 'new') {
             }, 1000);
         } else {
             console.error('루틴 기록 저장 실패:', data?.message || '알 수 없는 오류');
-            alert('루틴 기록 저장에 실패했습니다: ' + (data?.message || '알 수 없는 오류'));
+            showCustomAlert('루틴 기록 저장에 실패했습니다: ' + (data?.message || '알 수 없는 오류'), '저장 실패', 'exclamation-triangle');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('네트워크 오류가 발생했습니다.');
+        showCustomAlert('네트워크 오류가 발생했습니다.', '네트워크 오류', 'exclamation-triangle');
     });
 }
 
@@ -1519,7 +1543,7 @@ function deleteExercise(wxId) {
 
 // 운동 완료
 function endWorkout(sessionId) {
-    if (confirm('운동을 완료하시겠습니까?')) {
+    showCustomConfirm('운동을 완료하시겠습니까?', '운동 완료', 'flag-checkered', function() {
         const form = document.createElement('form');
         form.method = 'POST';
         form.innerHTML = `
@@ -1528,7 +1552,7 @@ function endWorkout(sessionId) {
         `;
         document.body.appendChild(form);
         form.submit();
-    }
+    });
 }
 
 // 운동 시간 수정
@@ -1537,7 +1561,7 @@ function updateWorkoutTime(sessionId) {
     const endTime = document.getElementById(`end_time_${sessionId}`).value;
     
     if (!startTime && !endTime) {
-        alert('시작시간 또는 종료시간을 입력해주세요.');
+        showCustomAlert('시작시간 또는 종료시간을 입력해주세요.', '입력 오류', 'exclamation-circle');
         return;
     }
     
@@ -1713,9 +1737,9 @@ function togglePartDetails(partName) {
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+            <div class="modal-footer d-flex justify-content-between">
                 <button type="button" class="btn btn-primary" onclick="applyExerciseInfoAdjustment()">적용</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
             </div>
         </div>
     </div>
@@ -1764,9 +1788,33 @@ function togglePartDetails(partName) {
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+            <div class="modal-footer d-flex justify-content-between">
                 <button type="button" class="btn btn-primary" onclick="applySetAdjustment()">적용</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 커스텀 Alert 모달 -->
+<div class="modal fade" id="customAlertModal" tabindex="-1" aria-labelledby="customAlertModalLabel" aria-hidden="true" style="z-index: 9999;">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="z-index: 10000;">
+            <div class="modal-header">
+                <h5 class="modal-title" id="customAlertModalTitle">
+                    <i class="fas fa-exclamation-triangle text-warning me-2"></i>알림
+                </h5>
+            </div>
+            <div class="modal-body text-center">
+                <p id="customAlertMessage" class="mb-0 fs-5">메시지가 여기에 표시됩니다.</p>
+            </div>
+            <div class="modal-footer justify-content-center">
+                <button type="button" class="btn btn-secondary btn-lg me-2" id="customAlertCancel" onclick="hideCustomAlert()" style="display: none;">
+                    <i class="fas fa-times me-1"></i>취소
+                </button>
+                <button type="button" class="btn btn-primary btn-lg" id="customAlertConfirm" onclick="confirmCustomAlert()">
+                    <i class="fas fa-check me-1"></i>확인
+                </button>
             </div>
         </div>
     </div>
@@ -1784,11 +1832,11 @@ function togglePartDetails(partName) {
             </div>
             <div class="modal-body">
                 <!-- 운동 정보 -->
-                <div class="exercise-info mb-4 text-center position-relative">
+                <div class="exercise-info mb-4 d-flex justify-content-between align-items-center px-0">
                     <button type="button" class="btn btn-outline-light btn-lg" id="modalExerciseInfo" onclick="openExerciseInfoModal()" style="pointer-events: auto; transition: none !important; background-color: transparent !important; border-color: #fff !important; color: #fff !important; font-size: 1.3rem !important; font-weight: bold !important;">
                         <i class="fas fa-edit"></i> 20kg × 15회 × 5세트
                     </button>
-                    <button type="button" class="btn btn-outline-light btn-lg position-absolute end-0" id="undoSetBtn" onclick="undoLastSet()" style="display: none; top: 50%; transform: translateY(-50%); position: absolute !important; pointer-events: auto; transition: none !important; background-color: transparent !important; border-color: #fff !important; color: #fff !important; z-index: 1000;">
+                    <button type="button" class="btn btn-outline-light btn-lg" id="undoSetBtn" onclick="undoLastSet()" style="display: none; pointer-events: auto; transition: none !important; background-color: transparent !important; border-color: #fff !important; color: #fff !important; z-index: 1000;">
                         <i class="fas fa-backspace"></i>
                     </button>
                 </div>
@@ -1805,12 +1853,12 @@ function togglePartDetails(partName) {
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-primary" onclick="finishModalExercise()">
-                    <i class="fas fa-flag-checkered"></i> 운동 완료
-                </button>
+            <div class="modal-footer d-flex justify-content-between">
                 <button type="button" class="btn btn-secondary" onclick="closeModalWithoutSave()">
                     <i class="fas fa-times"></i> 닫기
+                </button>
+                <button type="button" class="btn btn-primary" onclick="finishModalExercise()">
+                    <i class="fas fa-flag-checkered"></i> 운동 완료
                 </button>
             </div>
         </div>
@@ -1991,6 +2039,21 @@ function undoLastSet() {
         return; // 취소할 세트가 없음
     }
     
+    // 확인 메시지 표시
+    showCustomConfirm('방금 운동 세트를 취소하겠습니까?', '세트 취소', 'backspace', function() {
+        // 사용자가 확인한 경우에만 실행
+        executeUndoLastSet();
+    });
+    
+    return; // confirm 대신 callback 사용
+}
+
+// 실제 세트 취소 실행 함수
+function executeUndoLastSet() {
+    if (modalCompletedSets <= 0) {
+        return; // 취소할 세트가 없음
+    }
+    
     // 마지막 완료된 세트 찾기
     const completedSets = document.querySelectorAll('.set-square.completed');
     if (completedSets.length === 0) {
@@ -2039,7 +2102,7 @@ function updateModalTimer() {
     
     // 30초마다 색상 변경
     const colorIndex = Math.floor(totalSeconds / 30) % 7;
-    const colors = ['red', 'orange', 'yellow', 'green', 'blue', 'indigo', 'purple'];
+    const colors = ['red', 'orange', '#FFD700', 'green', 'blue', 'indigo', 'purple'];
     
     const modalContent = document.querySelector('.workout-modal');
     modalContent.style.setProperty('background-color', colors[colorIndex], 'important');
@@ -2143,25 +2206,25 @@ function completeModalSet(setNumber) {
 // 모달 운동 완료
 function finishModalExercise() {
     if (modalCompletedSets === modalTotalSets) {
-        if (confirm('모든 세트를 완료하셨습니다. 운동을 기록하고 종료하시겠습니까?')) {
+        showCustomConfirm('모든 세트를 완료하셨습니다. 운동을 기록하고 종료하시겠습니까?', '운동 완료', 'flag-checkered', function() {
             // 운동 기록 저장
             saveWorkoutRecord();
             bootstrap.Modal.getInstance(document.getElementById('exerciseModal')).hide();
-        }
+        });
     } else {
-        if (confirm(`아직 ${modalTotalSets - modalCompletedSets}세트가 남았습니다. 운동을 기록하고 종료하시겠습니까?`)) {
+        showCustomConfirm(`아직 ${modalTotalSets - modalCompletedSets}세트가 남았습니다. 운동을 기록하고 종료하시겠습니까?`, '운동 완료', 'flag-checkered', function() {
             // 운동 기록 저장
             saveWorkoutRecord();
             bootstrap.Modal.getInstance(document.getElementById('exerciseModal')).hide();
-        }
+        });
     }
 }
 
 // 세션 수정 확인 함수
 function confirmEditSession(sessionId, date) {
-    if (confirm('⚠️ 주의: 이 운동 세션을 수정하면 현재 세션의 운동 목록이 새로 교체되고, 기존에 기록된 세트별 수행 기록(무게, 횟수, 시간 등)이 삭제됩니다.\n\n정말로 수정하시겠습니까?')) {
+    showCustomDanger('⚠️ 주의: 이 운동 세션을 수정하면 현재 세션의 운동 목록이 새로 교체되고, 기존에 기록된 세트별 수행 기록(무게, 횟수, 시간 등)이 삭제됩니다.\n\n정말로 수정하시겠습니까?', '세션 수정 주의', 'exclamation-triangle', function() {
         window.location.href = `today.php?edit_session=${sessionId}&date=${date}`;
-    }
+    });
 }
 
 // 운동 추가 모달 열기
@@ -2186,7 +2249,7 @@ function searchAndParseExercises() {
     const exercisesContainer = document.getElementById('exercisesContainer');
     
     if (!inputText) {
-        alert('운동을 입력해주세요.');
+        showCustomAlert('운동을 입력해주세요.', '입력 오류', 'exclamation-circle');
         return;
     }
     
@@ -2215,7 +2278,7 @@ function searchAndParseExercises() {
         container.style.display = 'block';
         window.parsedExercises = parsedExercises;
     } else {
-        alert('올바른 형식으로 운동을 입력해주세요.');
+        showCustomAlert('올바른 형식으로 운동을 입력해주세요.', '입력 형식 오류', 'exclamation-circle');
     }
 }
 
@@ -2378,7 +2441,7 @@ function toggleMoreResults(safeName) {
 // 선택된 운동 추가 (today.php 방식)
 function addSelectedExercise() {
     if (!window.parsedExercises || window.parsedExercises.length === 0) {
-        alert('추가할 운동을 입력해주세요.');
+        showCustomAlert('추가할 운동을 입력해주세요.', '입력 오류', 'exclamation-circle');
         return;
     }
     
@@ -2429,7 +2492,7 @@ function addSelectedExercise() {
     if (exercisesToAdd.length > 0) {
         addExercisesToSession(exercisesToAdd);
     } else {
-        alert('추가할 운동을 선택해주세요.');
+        showCustomAlert('추가할 운동을 선택해주세요.', '선택 오류', 'exclamation-circle');
     }
 }
 
@@ -2624,20 +2687,20 @@ function saveWorkoutRecord() {
             location.reload();
         } else {
             console.error('운동 기록 저장 실패:', result.message);
-            alert('운동 기록 저장에 실패했습니다: ' + result.message);
+            showCustomAlert('운동 기록 저장에 실패했습니다: ' + result.message, '저장 실패', 'exclamation-triangle');
         }
     })
     .catch(error => {
         console.error('운동 기록 저장 오류:', error);
-        alert('운동 기록 저장 중 오류가 발생했습니다.');
+        showCustomAlert('운동 기록 저장 중 오류가 발생했습니다.', '저장 오류', 'exclamation-triangle');
     });
 }
 
 // 기록 없이 닫기
 function closeModalWithoutSave() {
-    if (confirm('운동 기록 없이 종료하시겠습니까?')) {
+    showCustomWarning('운동 기록 없이 종료하시겠습니까?', '기록 없이 종료', 'times-circle', function() {
         bootstrap.Modal.getInstance(document.getElementById('exerciseModal')).hide();
-    }
+    });
 }
 
 // 완료된 운동 로드
@@ -3022,6 +3085,21 @@ function updateOriginalExerciseList(exerciseId, weight, reps, sets) {
 </script>
 
 <style>
+/* 앱바 스타일 */
+.app-bar {
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    margin-bottom: 0;
+}
+
+.app-bar h4 {
+    color: #212529 !important;
+}
+
+.app-bar i {
+    color: #007bff !important;
+}
+
 .sets-circles {
     display: flex;
     justify-content: center;
@@ -3353,22 +3431,22 @@ function updateOriginalExerciseList(exerciseId, weight, reps, sets) {
     box-shadow: none !important;
 }
 
-/* 취소 버튼 위치 고정 */
+/* 취소 버튼 스타일 */
 #undoSetBtn {
-    position: absolute !important;
-    top: 50% !important;
-    right: 0 !important;
-    transform: translateY(-50%) !important;
     z-index: 1000 !important;
 }
 
-#undoSetBtn:active,
-#undoSetBtn:focus {
-    position: absolute !important;
-    top: 50% !important;
-    right: 0 !important;
-    transform: translateY(-50%) !important;
-    z-index: 1000 !important;
+/* 커스텀 Alert 모달 z-index */
+#customAlertModal {
+    z-index: 9999 !important;
+}
+
+#customAlertModal .modal-dialog {
+    z-index: 10000 !important;
+}
+
+#customAlertModal .modal-content {
+    z-index: 10001 !important;
 }
 
 /* SB Admin 2 스타일 카드 */
@@ -3388,3 +3466,88 @@ function updateOriginalExerciseList(exerciseId, weight, reps, sets) {
     border-left: 0.25rem solid #1cc88a !important;
 }
 </style>
+
+<script>
+// 뒤로가기 함수
+function goBack() {
+    // history.back()을 사용하여 이전 페이지로 이동
+    window.history.back();
+}
+
+// 커스텀 Alert 함수들
+let customAlertCallback = null;
+
+// 커스텀 Alert 표시 (확인만)
+function showCustomAlert(message, title = '알림', icon = 'exclamation-triangle') {
+    document.getElementById('customAlertModalTitle').innerHTML = `<i class="fas fa-${icon} text-warning me-2"></i>${title}`;
+    document.getElementById('customAlertMessage').textContent = message;
+    document.getElementById('customAlertCancel').style.display = 'none';
+    document.getElementById('customAlertConfirm').textContent = '확인';
+    document.getElementById('customAlertConfirm').className = 'btn btn-primary btn-lg';
+    
+    const modal = new bootstrap.Modal(document.getElementById('customAlertModal'));
+    modal.show();
+    
+    customAlertCallback = null;
+}
+
+// 커스텀 Confirm 표시 (확인/취소)
+function showCustomConfirm(message, title = '확인', icon = 'question-circle', onConfirm = null) {
+    document.getElementById('customAlertModalTitle').innerHTML = `<i class="fas fa-${icon} text-primary me-2"></i>${title}`;
+    document.getElementById('customAlertMessage').textContent = message;
+    document.getElementById('customAlertCancel').style.display = 'inline-block';
+    document.getElementById('customAlertConfirm').textContent = '확인';
+    document.getElementById('customAlertConfirm').className = 'btn btn-primary btn-lg';
+    
+    const modal = new bootstrap.Modal(document.getElementById('customAlertModal'));
+    modal.show();
+    
+    customAlertCallback = onConfirm;
+}
+
+// 커스텀 경고 표시 (경고/취소)
+function showCustomWarning(message, title = '경고', icon = 'exclamation-triangle', onConfirm = null) {
+    document.getElementById('customAlertModalTitle').innerHTML = `<i class="fas fa-${icon} text-warning me-2"></i>${title}`;
+    document.getElementById('customAlertMessage').textContent = message;
+    document.getElementById('customAlertCancel').style.display = 'inline-block';
+    document.getElementById('customAlertConfirm').textContent = '확인';
+    document.getElementById('customAlertConfirm').className = 'btn btn-warning btn-lg';
+    
+    const modal = new bootstrap.Modal(document.getElementById('customAlertModal'));
+    modal.show();
+    
+    customAlertCallback = onConfirm;
+}
+
+// 커스텀 위험 표시 (삭제/취소)
+function showCustomDanger(message, title = '위험', icon = 'exclamation-triangle', onConfirm = null) {
+    document.getElementById('customAlertModalTitle').innerHTML = `<i class="fas fa-${icon} text-danger me-2"></i>${title}`;
+    document.getElementById('customAlertMessage').textContent = message;
+    document.getElementById('customAlertCancel').style.display = 'inline-block';
+    document.getElementById('customAlertConfirm').textContent = '확인';
+    document.getElementById('customAlertConfirm').className = 'btn btn-danger btn-lg';
+    
+    const modal = new bootstrap.Modal(document.getElementById('customAlertModal'));
+    modal.show();
+    
+    customAlertCallback = onConfirm;
+}
+
+// 확인 버튼 클릭
+function confirmCustomAlert() {
+    const modal = bootstrap.Modal.getInstance(document.getElementById('customAlertModal'));
+    modal.hide();
+    
+    if (customAlertCallback) {
+        customAlertCallback();
+    }
+}
+
+// 취소 버튼 클릭
+function hideCustomAlert() {
+    const modal = bootstrap.Modal.getInstance(document.getElementById('customAlertModal'));
+    modal.hide();
+    
+    customAlertCallback = null;
+}
+</script>

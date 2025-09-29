@@ -176,18 +176,17 @@ $lastDayOfMonth->modify('last day of this month');
 
 // 해당 월의 첫 번째 월요일 찾기
 $firstMonday = clone $firstDayOfMonth;
-if ($firstMonday->format('N') != 1) {
-    $firstMonday->modify('last monday');
-    if ($firstMonday->format('Y-m') !== $selectedMonth) {
-        $firstMonday->modify('next monday');
-    }
+// 해당 월의 1일이 월요일이 아니면 이전 월요일부터 시작
+$dayOfWeek = $firstMonday->format('N'); // 1=월요일, 7=일요일
+if ($dayOfWeek != 1) {
+    $firstMonday->modify('-' . ($dayOfWeek - 1) . ' days');
 }
 
 // 해당 월의 마지막 주 일요일 찾기
 $lastSunday = clone $lastDayOfMonth;
-$lastSunday->modify('sunday this week');
-if ($lastSunday->format('Y-m') !== $selectedMonth) {
-    $lastSunday->modify('last sunday');
+$dayOfWeek = $lastSunday->format('N'); // 1=월요일, 7=일요일
+if ($dayOfWeek != 7) {
+    $lastSunday->modify('+' . (7 - $dayOfWeek) . ' days');
 }
 
 $weekNumber = 1;

@@ -373,6 +373,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_exercise') {
             padding: 5px 15px;
             font-size: 0.8rem;
         }
+        .gap-1 {
+            gap: 0.25rem !important;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -585,13 +588,13 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_exercise') {
              <div class="card-body">
                  <!-- 검색 및 필터 -->
                  <div class="row mb-3">
-                     <div class="col-md-4">
+                     <div class="col-md-3">
                          <div class="input-group">
                              <span class="input-group-text"><i class="fas fa-search"></i></span>
                              <input type="text" class="form-control" id="searchInput" placeholder="운동명으로 검색...">
                          </div>
                      </div>
-                     <div class="col-md-3">
+                     <div class="col-md-2">
                          <select class="form-select" id="equipmentFilter">
                              <option value="">모든 장비</option>
                              <option value="Barbell">Barbell</option>
@@ -602,7 +605,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_exercise') {
                              <option value="Kettlebell">Kettlebell</option>
                          </select>
                      </div>
-                     <div class="col-md-3">
+                     <div class="col-md-2">
                          <select class="form-select" id="movementFilter">
                              <option value="">모든 동작</option>
                              <option value="Press">Press</option>
@@ -613,6 +616,16 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_exercise') {
                              <option value="Squat">Squat</option>
                              <option value="Lunge">Lunge</option>
                              <option value="Row">Row</option>
+                         </select>
+                     </div>
+                     <div class="col-md-3">
+                         <select class="form-select" id="mappingFilter">
+                             <option value="">모든 운동</option>
+                             <option value="no_mapping">매핑 없음</option>
+                             <option value="no_muscle">근육 매핑 없음</option>
+                             <option value="no_zone">세부존 매핑 없음</option>
+                             <option value="no_weight">가중치 없음</option>
+                             <option value="complete">완전한 매핑</option>
                          </select>
                      </div>
                      <div class="col-md-2">
@@ -672,12 +685,27 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_exercise') {
                                      <?php endif; ?>
                                  </td>
                                  <td>
-                                     <span class="stats-badge me-1">
-                                         <i class="fas fa-map-marker-alt me-1"></i><?= $exercise['zone_count'] ?>
-                                     </span>
-                                     <span class="stats-badge">
-                                         <i class="fas fa-muscle me-1"></i><?= $exercise['muscle_count'] ?>
-                                     </span>
+                                     <div class="d-flex flex-column gap-1">
+                                         <div>
+                                             <span class="stats-badge me-1" title="세부존 매핑">
+                                                 <i class="fas fa-map-marker-alt me-1"></i><?= $exercise['zone_count'] ?>
+                                             </span>
+                                             <span class="stats-badge" title="근육 매핑">
+                                                 <i class="fas fa-muscle me-1"></i><?= $exercise['muscle_count'] ?>
+                                             </span>
+                                         </div>
+                                         <div class="small">
+                                             <?php if ($exercise['zone_count'] == 0 && $exercise['muscle_count'] == 0): ?>
+                                                 <span class="badge bg-danger">매핑 없음</span>
+                                             <?php elseif ($exercise['zone_count'] == 0): ?>
+                                                 <span class="badge bg-warning">세부존 없음</span>
+                                             <?php elseif ($exercise['muscle_count'] == 0): ?>
+                                                 <span class="badge bg-warning">근육 없음</span>
+                                             <?php else: ?>
+                                                 <span class="badge bg-success">완전</span>
+                                             <?php endif; ?>
+                                         </div>
+                                     </div>
                                  </td>
                                  <td>
                                      <span class="badge bg-success"><?= $exercise['alias_count'] ?></span>
@@ -1184,6 +1212,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_exercise') {
                const searchTerm = document.getElementById('searchInput').value.toLowerCase();
                const equipmentFilter = document.getElementById('equipmentFilter').value;
                const movementFilter = document.getElementById('movementFilter').value;
+               const mappingFilter = document.getElementById('mappingFilter').value;
                
                const rows = document.querySelectorAll('.exercise-row');
                let visibleCount = 0;
@@ -1203,8 +1232,34 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_exercise') {
                    // 동작 필터링
                    const matchesMovement = !movementFilter || movement === movementFilter;
                    
+                   // 매핑 상태 필터링
+                   let matchesMapping = true;
+                   if (mappingFilter) {
+                       const zoneCount = parseInt(row.querySelector('.stats-badge:first-child').textContent.trim());
+                       const muscleCount = parseInt(row.querySelector('.stats-badge:last-child').textContent.trim());
+                       
+                       switch (mappingFilter) {
+                           case 'no_mapping':
+                               matchesMapping = zoneCount === 0 && muscleCount === 0;
+                               break;
+                           case 'no_muscle':
+                               matchesMapping = muscleCount === 0;
+                               break;
+                           case 'no_zone':
+                               matchesMapping = zoneCount === 0;
+                               break;
+                           case 'no_weight':
+                               // 가중치 필터는 현재 구현되지 않음 (추후 확장 가능)
+                               matchesMapping = true;
+                               break;
+                           case 'complete':
+                               matchesMapping = zoneCount > 0 && muscleCount > 0;
+                               break;
+                       }
+                   }
+                   
                    // 모든 조건을 만족하는 경우에만 표시
-                   if (matchesSearch && matchesEquipment && matchesMovement) {
+                   if (matchesSearch && matchesEquipment && matchesMovement && matchesMapping) {
                        row.style.display = '';
                        visibleCount++;
                    } else {
@@ -1234,11 +1289,15 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_exercise') {
            // 동작 필터 이벤트
            document.getElementById('movementFilter').addEventListener('change', filterExercises);
            
+           // 매핑 필터 이벤트
+           document.getElementById('mappingFilter').addEventListener('change', filterExercises);
+           
            // 필터 초기화
            document.getElementById('clearFilters').addEventListener('click', function() {
                document.getElementById('searchInput').value = '';
                document.getElementById('equipmentFilter').value = '';
                document.getElementById('movementFilter').value = '';
+               document.getElementById('mappingFilter').value = '';
                filterExercises();
            });
            

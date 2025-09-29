@@ -556,16 +556,17 @@ $lastDayOfMonth = new DateTime($selectedMonth . '-' . $currentMonth->format('t')
 
 // 해당 월의 첫 번째 주 시작일 찾기 (월요일부터 시작)
 $firstMonday = clone $currentMonth;
-$firstMonday->modify('monday this week');
-if ($firstMonday->format('Y-m') !== $selectedMonth) {
-    $firstMonday->modify('next monday');
+// 해당 월의 1일이 월요일이 아니면 이전 월요일부터 시작
+$dayOfWeek = $firstMonday->format('N'); // 1=월요일, 7=일요일
+if ($dayOfWeek != 1) {
+    $firstMonday->modify('-' . ($dayOfWeek - 1) . ' days');
 }
 
 // 해당 월의 마지막 주 일요일 찾기
 $lastSunday = clone $lastDayOfMonth;
-$lastSunday->modify('sunday this week');
-if ($lastSunday->format('Y-m') !== $selectedMonth) {
-    $lastSunday->modify('last sunday');
+$dayOfWeek = $lastSunday->format('N'); // 1=월요일, 7=일요일
+if ($dayOfWeek != 7) {
+    $lastSunday->modify('+' . (7 - $dayOfWeek) . ' days');
 }
 
 // 운동한 날짜별 데이터 수집 (이번 달) - 세션 기준으로 먼저 조회
@@ -613,7 +614,8 @@ while ($currentWeek <= $lastSunday) {
             'day_number' => $day->format('j'),
             'is_current_month' => $day->format('Y-m') === $selectedMonth,
             'has_workout' => $workoutData !== null,
-            'workout_data' => $workoutData
+            'workout_data' => $workoutData,
+            'day_of_week' => $day->format('N') // 1=월요일, 7=일요일
         ];
     }
     
@@ -727,7 +729,7 @@ include 'header.php';
                             <div class="day-cell <?= $day['is_current_month'] ? 'current-month' : 'other-month' ?> <?= $day['has_workout'] ? 'has-workout' : 'no-workout' ?> <?= $day['date'] == $date ? 'selected' : '' ?> <?= $day['date'] == date('Y-m-d') ? 'today' : '' ?>" 
                                  onclick="goToDate('<?= $day['date'] ?>')" 
                                  style="cursor: pointer;">
-                                <div class="day-name"><?= $day['day_name'] ?></div>
+                                <div class="day-name <?= $day['day_of_week'] == 6 ? 'saturday' : ($day['day_of_week'] == 7 ? 'sunday' : '') ?>"><?= $day['day_name'] ?></div>
                                 <div class="day-number"><?= $day['day_number'] ?></div>
                                 <?php if ($day['has_workout']): ?>
                                     <div class="workout-indicator">
@@ -1961,7 +1963,22 @@ function goToDate(date) {
 
 .day-cell.other-month {
     background-color: #f8f9fa;
-    opacity: 0.6;
+    opacity: 0.3;
+    color: #6c757d;
+}
+
+.day-cell .day-name {
+    font-size: 10px;
+    font-weight: bold;
+    margin-bottom: 2px;
+}
+
+.day-cell .day-name.saturday {
+    color: #007bff !important;
+}
+
+.day-cell .day-name.sunday {
+    color: #dc3545 !important;
 }
 
 .day-cell.has-workout {
