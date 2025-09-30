@@ -125,11 +125,27 @@ if ($_POST) {
                     exit;
                 }
                 
+                // 삭제 전 해당 운동의 세션 ID 확보 (돌아갈 페이지 결정용)
+                $stmt = $pdo->prepare("SELECT session_id FROM m_workout_exercise WHERE wx_id = ?");
+                $stmt->execute([$wx_id]);
+                $wxRow = $stmt->fetch(PDO::FETCH_ASSOC);
+                $redirectSessionId = $wxRow['session_id'] ?? null;
+
                 // 운동 삭제 (CASCADE로 관련 세트들도 자동 삭제됨)
                 $stmt = $pdo->prepare("DELETE FROM m_workout_exercise WHERE wx_id = ?");
                 $stmt->execute([$wx_id]);
                 
                 $message = "운동이 성공적으로 삭제되었습니다.";
+                
+                // AJAX 요청이면 JSON, 아니면 현재 세션 페이지로
+                if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => true, 'message' => $message]);
+                    exit;
+                } else if ($redirectSessionId) {
+                    header('Location: my_workouts_ing.php?session_id=' . $redirectSessionId . '&message=' . urlencode($message));
+                    exit;
+                }
                 
             } elseif ($_POST['action'] === 'update_set_data') {
                 // 세트 데이터 업데이트
@@ -150,9 +166,15 @@ if ($_POST) {
                     exit;
                 }
                 
-                // 세트 데이터 업데이트
-                $stmt = $pdo->prepare("UPDATE m_workout_exercise SET weight = ?, reps = ? WHERE wx_id = ?");
-                $stmt->execute([$weight, $reps, $wx_id]);
+                // ex_id가 있으면 운동도 변경
+                if ($ex_id) {
+                    $stmt = $pdo->prepare("UPDATE m_workout_exercise SET ex_id = ?, weight = ?, reps = ?, sets = ? WHERE wx_id = ?");
+                    $stmt->execute([$ex_id, $weight, $reps, $sets, $wx_id]);
+                } else {
+                    // 세트 데이터만 업데이트
+                    $stmt = $pdo->prepare("UPDATE m_workout_exercise SET weight = ?, reps = ?, sets = ? WHERE wx_id = ?");
+                    $stmt->execute([$weight, $reps, $sets, $wx_id]);
+                }
                 
                 // AJAX 요청인 경우 JSON 응답
                 if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
@@ -163,7 +185,7 @@ if ($_POST) {
                 
                 $message = "세트 데이터가 성공적으로 업데이트되었습니다.";
                 
-            } elseif ($_POST['action'] === 'update_exercise_info') {
+            } elseif ($_POST['action'] === 'update_exercise_info' || $_POST['action'] === 'update_exercise') {
                 // 디버그: 받은 POST 데이터 확인
                 error_log("update_exercise_info 요청 받음 - POST 데이터: " . print_r($_POST, true));
                 
@@ -172,6 +194,7 @@ if ($_POST) {
                 $weight = $_POST['weight'];
                 $reps = $_POST['reps'];
                 $sets = $_POST['sets'];
+                $ex_id = isset($_POST['ex_id']) ? $_POST['ex_id'] : null;
                 
                 // wx_id 존재 여부 확인
                 $stmt = $pdo->prepare("SELECT wx_id, session_id FROM m_workout_exercise WHERE wx_id = ?");
@@ -219,25 +242,30 @@ if ($_POST) {
                 }
                 
                 // 업데이트 전 현재 값 확인
-                $stmt = $pdo->prepare("SELECT weight, reps, sets FROM m_workout_exercise WHERE wx_id = ?");
+                $stmt = $pdo->prepare("SELECT ex_id, weight, reps, sets FROM m_workout_exercise WHERE wx_id = ?");
                 $stmt->execute([$wx_id]);
-                $current_values = $stmt->fetch(PDO::FETCH_ASSOC);
+                $before_values = $stmt->fetch(PDO::FETCH_ASSOC);
                 
                 // 데이터 타입 변환 확인
                 $weight = (float)$weight;
                 $reps = (int)$reps;
                 $sets = (int)$sets;
                 
-                // 운동 정보 업데이트
-                $stmt = $pdo->prepare("UPDATE m_workout_exercise SET weight = ?, reps = ?, sets = ? WHERE wx_id = ?");
-                $result = $stmt->execute([$weight, $reps, $sets, $wx_id]);
+                // 운동 정보 업데이트 (ex_id가 전달되면 같이 변경)
+                if ($ex_id) {
+                    $stmt = $pdo->prepare("UPDATE m_workout_exercise SET ex_id = ?, weight = ?, reps = ?, sets = ? WHERE wx_id = ?");
+                    $result = $stmt->execute([$ex_id, $weight, $reps, $sets, $wx_id]);
+                } else {
+                    $stmt = $pdo->prepare("UPDATE m_workout_exercise SET weight = ?, reps = ?, sets = ? WHERE wx_id = ?");
+                    $result = $stmt->execute([$weight, $reps, $sets, $wx_id]);
+                }
                 
                 // 디버깅: 업데이트 결과 확인
                 $affected_rows = $stmt->rowCount();
                 error_log("업데이트 시도 - wx_id: $wx_id, weight: $weight, reps: $reps, sets: $sets, result: " . ($result ? 'true' : 'false') . ", affected_rows: $affected_rows");
                 
                 // 업데이트 후 값 확인
-                $stmt = $pdo->prepare("SELECT weight, reps, sets FROM m_workout_exercise WHERE wx_id = ?");
+                $stmt = $pdo->prepare("SELECT ex_id, weight, reps, sets FROM m_workout_exercise WHERE wx_id = ?");
                 $stmt->execute([$wx_id]);
                 $after_values = $stmt->fetch(PDO::FETCH_ASSOC);
                 
@@ -248,11 +276,44 @@ if ($_POST) {
                         echo json_encode([
                             'success' => true, 
                             'message' => "운동 정보가 성공적으로 업데이트되었습니다. (영향받은 행: {$affected_rows})",
+                            'debug' => [
+                                'before' => $before_values,
+                                'after' => $after_values,
+                                'requested' => [
+                                    'ex_id' => $ex_id,
+                                    'weight' => $weight,
+                                    'reps' => $reps,
+                                    'sets' => $sets,
+                                ],
+                                'affected_rows' => $affected_rows
+                            ]
                         ]);
                     } else {
+                        // 영향받은 행이 0인 경우 상세 디버그 정보 포함
+                        $no_change_reason = '값이 동일하거나 변경 사항 없음';
+                        if ($before_values) {
+                            $no_change_reason = (
+                                ((int)($before_values['ex_id'] ?? 0) === (int)($ex_id ?? $before_values['ex_id'])) &&
+                                ((float)$before_values['weight'] === (float)$weight) &&
+                                ((int)$before_values['reps'] === (int)$reps) &&
+                                ((int)$before_values['sets'] === (int)$sets)
+                            ) ? '변경된 값이 없음(동일 값)' : 'DB가 업데이트를 보고하지 않음';
+                        }
+
                         echo json_encode([
                             'success' => false, 
-                            'message' => "업데이트 실패. 영향받은 행: {$affected_rows}"
+                            'message' => "업데이트 실패. 영향받은 행: {$affected_rows} - {$no_change_reason}",
+                            'debug' => [
+                                'before' => $before_values,
+                                'after' => $after_values,
+                                'requested' => [
+                                    'ex_id' => $ex_id,
+                                    'weight' => $weight,
+                                    'reps' => $reps,
+                                    'sets' => $sets,
+                                ],
+                                'affected_rows' => $affected_rows
+                            ]
                         ]);
                     }
                     exit;
@@ -414,9 +475,53 @@ if ($_POST) {
                 
                 header('Content-Type: application/json');
                 echo json_encode($response);
-                $pdo->commit();
                 exit;
                 
+            }
+            elseif ($_POST['action'] === 'reorder_exercise') {
+                $wx_id = (int)$_POST['wx_id'];
+                $direction = $_POST['direction'] === 'up' ? 'up' : 'down';
+
+                // 대상 운동 정보
+                $stmt = $pdo->prepare("SELECT session_id, order_no FROM m_workout_exercise WHERE wx_id = ?");
+                $stmt->execute([$wx_id]);
+                $current = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$current) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => false, 'message' => '운동을 찾을 수 없습니다.']);
+                    exit;
+                }
+
+                $session_id = (int)$current['session_id'];
+                $order_no = (int)$current['order_no'];
+
+                // 이웃 찾기
+                if ($direction === 'up') {
+                    $stmt = $pdo->prepare("SELECT wx_id, order_no FROM m_workout_exercise WHERE session_id = ? AND order_no < ? ORDER BY order_no DESC LIMIT 1");
+                    $stmt->execute([$session_id, $order_no]);
+                } else {
+                    $stmt = $pdo->prepare("SELECT wx_id, order_no FROM m_workout_exercise WHERE session_id = ? AND order_no > ? ORDER BY order_no ASC LIMIT 1");
+                    $stmt->execute([$session_id, $order_no]);
+                }
+                $neighbor = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                header('Content-Type: application/json');
+                if (!$neighbor) {
+                    // 방향에 따라 친절한 메시지
+                    $friendly = ($direction === 'up') ? '첫번째 카드 입니다.' : '마지막 카드 입니다.';
+                    echo json_encode(['success' => false, 'message' => $friendly]);
+                    exit;
+                }
+
+                // 스왑
+                $pdo->beginTransaction();
+                $stmt = $pdo->prepare("UPDATE m_workout_exercise SET order_no = ? WHERE wx_id = ?");
+                $stmt->execute([(int)$neighbor['order_no'], $wx_id]);
+                $stmt->execute([$order_no, (int)$neighbor['wx_id']]);
+                $pdo->commit();
+
+                echo json_encode(['success' => true]);
+                exit;
             }
         }
         
@@ -551,7 +656,8 @@ foreach ($workoutSessions as $session) {
                e.name_en, 
                e.equipment,
                we.is_temp,
-               te.exercise_name as temp_exercise_name
+               te.exercise_name as temp_exercise_name,
+               we.original_exercise_name
         FROM m_workout_exercise we
         LEFT JOIN m_exercise e ON we.ex_id = e.ex_id
         LEFT JOIN m_temp_exercise te ON we.temp_ex_id = te.temp_ex_id
@@ -650,7 +756,8 @@ foreach ($workoutSessions as $index => $session) {
                e.name_en, 
                e.equipment,
                we.is_temp,
-               te.exercise_name as temp_exercise_name
+               te.exercise_name as temp_exercise_name,
+               we.original_exercise_name
         FROM m_workout_exercise we
         LEFT JOIN m_exercise e ON we.ex_id = e.ex_id
         LEFT JOIN m_temp_exercise te ON we.temp_ex_id = te.temp_ex_id
@@ -1055,15 +1162,25 @@ include 'header.php';
                     </div>
                 </div>
                 <div class="d-flex justify-content-between align-items-center">
-                    <div class="btn-group btn-group-sm" onclick="event.stopPropagation();">
-                        <a href="today.php?edit_exercise=<?= $exercise['wx_id'] ?>&date=<?= $date ?>" 
-                           class="btn btn-outline-primary btn-sm">
-                            <i class="fas fa-edit"></i>
-                        </a>
-                        <button type="button" class="btn btn-outline-danger btn-sm" 
-                                onclick="deleteExercise(<?= $exercise['wx_id'] ?>)">
-                            <i class="fas fa-trash"></i>
-                        </button>
+                    <div class="d-flex flex-column" onclick="event.stopPropagation();">
+                        <div class="btn-group btn-group-sm mb-1">
+                            <button type="button" class="btn btn-outline-primary btn-sm" 
+                                    onclick="openEditExerciseModal(<?= $exercise['wx_id'] ?>, '<?= htmlspecialchars($exercise['name_kr']) ?>', <?= $exercise['weight'] ?>, <?= $exercise['reps'] ?>, <?= $exercise['sets'] ?>)">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-danger btn-sm" 
+                                    onclick="deleteExercise(<?= $exercise['wx_id'] ?>)">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" title="위로" onclick="reorderExercise(<?= $exercise['wx_id'] ?>, 'up');">
+                                <i class="fas fa-arrow-up"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" title="아래로" onclick="reorderExercise(<?= $exercise['wx_id'] ?>, 'down');">
+                                <i class="fas fa-arrow-down"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="btn-group" onclick="event.stopPropagation();">
                         <!-- 완료 상태 버튼 -->
@@ -1639,6 +1756,44 @@ function togglePartDetails(partName) {
     }
 }
 </script>
+
+<!-- 운동 수정 모달 -->
+<div class="modal fade" id="editExerciseModal" tabindex="-1" aria-labelledby="editExerciseModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editExerciseModalLabel">운동 수정</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editWxId" name="wx_id">
+                <!-- 운동 입력 텍스트박스 -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">운동 수정</label>
+                    <textarea class="form-control" id="editExerciseInputText" rows="6" 
+                              placeholder="벤치프레스 80 10 3&#10;스쿼트 100 8 4&#10;데드리프트 120 5 3"></textarea>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-primary" onclick="parseEditExercises()">
+                            <i class="fas fa-search"></i> 검색 및 파싱
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 파싱된 운동 목록 (today.php 방식) -->
+                <div id="editParsedExercisesList" class="mb-4" style="display: none;">
+                    <label class="form-label fw-bold">운동 목록</label>
+                    <div id="editExercisesContainer">
+                        <!-- 파싱된 운동들이 여기에 표시됩니다 -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="saveEditExercises()">수정</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- 운동 추가 모달 -->
 <div class="modal fade" id="addExerciseModal" tabindex="-1" aria-labelledby="addExerciseModalLabel" aria-hidden="true">
@@ -2227,6 +2382,263 @@ function confirmEditSession(sessionId, date) {
     });
 }
 
+// 운동 수정 모달 열기
+function openEditExerciseModal(wxId, exerciseName, weight, reps, sets) {
+    // 디버깅: 받은 값들 확인
+    console.log('운동 수정 모달 열기:', {
+        wxId: wxId,
+        exerciseName: exerciseName,
+        weight: weight,
+        reps: reps,
+        sets: sets
+    });
+    
+    // 현재 운동 정보를 텍스트로 설정 (운동 추가와 동일한 형식)
+    document.getElementById('editWxId').value = wxId;
+    document.getElementById('editExerciseInputText').value = `${exerciseName} ${weight} ${reps} ${sets}`;
+    
+    // 파싱된 운동 목록 초기화
+    document.getElementById('editParsedExercisesList').style.display = 'none';
+    document.getElementById('editExercisesContainer').innerHTML = '';
+    
+    const modal = new bootstrap.Modal(document.getElementById('editExerciseModal'));
+    modal.show();
+}
+
+// 운동 수정 모달에서 운동 파싱 (운동 추가와 동일한 로직)
+function parseEditExercises() {
+    const inputText = document.getElementById('editExerciseInputText').value.trim();
+    const container = document.getElementById('editParsedExercisesList');
+    const exercisesContainer = document.getElementById('editExercisesContainer');
+    
+    if (!inputText) {
+        showCustomAlert('운동을 입력해주세요.', '입력 오류', 'exclamation-circle');
+        return;
+    }
+    
+    const lines = inputText.split('\n').filter(line => line.trim());
+    const parsedExercises = [];
+    
+    lines.forEach((line, index) => {
+        // 운동 추가와 동일한 형식: "운동명 무게 횟수 세트"
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 4) {
+            const exercise_name = parts.slice(0, -3).join(' ');
+            const weight = parseFloat(parts[parts.length - 3]);
+            const reps = parseInt(parts[parts.length - 2]);
+            const sets = parseInt(parts[parts.length - 1]);
+            
+            if (!isNaN(weight) && !isNaN(reps) && !isNaN(sets)) {
+                parsedExercises.push({
+                    exercise_name: exercise_name,
+                    weight: weight,
+                    reps: reps,
+                    sets: sets
+                });
+            }
+        }
+    });
+    
+    if (parsedExercises.length > 0) {
+        // 각 운동에 대해 검색 수행
+        searchExercisesForEdit(parsedExercises);
+        container.style.display = 'block';
+        window.editParsedExercises = parsedExercises;
+    } else {
+        showCustomAlert('올바른 형식으로 운동을 입력해주세요.', '입력 형식 오류', 'exclamation-circle');
+    }
+}
+
+// 운동 수정 모달에서 운동 검색 및 표시 (운동 추가와 동일한 로직)
+function searchExercisesForEdit(exercises) {
+    const container = document.getElementById('editExercisesContainer');
+    if (!container) {
+        console.error('editExercisesContainer 요소를 찾을 수 없습니다.');
+        return;
+    }
+
+    container.innerHTML = '';
+
+    exercises.forEach((exercise, index) => {
+        // 추가 모달과 동일한 카드 렌더링을 재사용
+        fetch('', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: `action=search_exercises&search_term=${encodeURIComponent(exercise.exercise_name)}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            const results = data.success ? data.exercises : [];
+            // 임시로 exercisesContainer를 editExercisesContainer로 바꿔 그 안에 동일 렌더링
+            const originalId = 'exercisesContainer';
+            const tempId = 'editExercisesContainer';
+            // displayExerciseCard는 내부에서 originalId를 참조하므로, 동일 구조로 삽입
+            const placeholder = document.createElement('div');
+            placeholder.id = originalId;
+            placeholder.style.display = 'none';
+            container.appendChild(placeholder);
+            displayExerciseCard(exercise, results, index);
+            // 렌더링된 마지막 카드 노드를 edit 컨테이너로 이동
+            const lastCard = placeholder.lastElementChild || placeholder.parentElement.querySelector('#exercisesContainer > .card:last-child');
+            if (lastCard) {
+                container.appendChild(lastCard);
+            }
+            placeholder.remove();
+        })
+        .catch(() => {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'card mb-3';
+            placeholder.innerHTML = `<div class="card-body text-danger small">검색 중 오류가 발생했습니다.</div>`;
+            container.appendChild(placeholder);
+        });
+    });
+}
+
+// 운동 수정 저장
+function saveEditExercises() {
+    if (!window.editParsedExercises || window.editParsedExercises.length === 0) {
+        showCustomAlert('수정할 운동을 입력해주세요.', '입력 오류', 'exclamation-circle');
+        return;
+    }
+    
+    const wxId = document.getElementById('editWxId').value;
+    const exercisesToUpdate = [];
+    
+    // 각 운동 카드에서 선택된 운동과 입력값 수집 (add 모달과 동일 규칙)
+    window.editParsedExercises.forEach((exercise, index) => {
+        const exerciseName = exercise.exercise_name;
+        const safeName = exerciseName.replace(/[^a-zA-Z0-9]/g, '_');
+        // 다수 결과일 때 라디오 네임: selected_exercise_${safeName}
+        let exId = null;
+        const selectedRadio = document.querySelector(`input[name="selected_exercise_${safeName}"]:checked`);
+        if (selectedRadio) {
+            exId = selectedRadio.value;
+        } else {
+            // 단일 결과일 때 라디오가 없으므로, 카드 내에 자동으로 첫 결과를 표시하는 구조를 따름
+            // displayExerciseCard에서 단일 결과는 텍스트만 출력 -> 이 경우 서버가 검색한 첫 결과 ex_id를 얻을 수 없으므로
+            // data- 속성으로 주입된 것이 없으면 ex_id는 null로 두고, 서버에서 값이 동일하면 영향 행 0이 정상
+            // 필요 시 이후 개선: 단일 결과도 hidden 라디오를 추가하도록 displayExerciseCard를 확장
+        }
+
+        const exerciseData = {
+            exercise_name: exercise.exercise_name,
+            weight: exercise.weight,
+            reps: exercise.reps,
+            sets: exercise.sets,
+            ex_id: exId
+        };
+        exercisesToUpdate.push(exerciseData);
+    });
+    
+    // 디버그: 저장 직전 데이터 로깅
+    console.log('[EDIT] saveEditExercises - wxId:', wxId);
+    console.log('[EDIT] saveEditExercises - exercisesToUpdate:', JSON.stringify(exercisesToUpdate, null, 2));
+
+    if (exercisesToUpdate.length > 0) {
+        updateExerciseInSession(wxId, exercisesToUpdate[0]); // 첫 번째 운동만 수정
+    } else {
+        showCustomAlert('수정할 운동을 선택해주세요.', '선택 오류', 'exclamation-circle');
+    }
+}
+
+// 세션에서 운동 수정
+function updateExerciseInSession(wxId, exercise) {
+    const formData = new FormData();
+    formData.append('action', 'update_exercise');
+    formData.append('wx_id', wxId);
+    formData.append('weight', exercise.weight);
+    formData.append('reps', exercise.reps);
+    formData.append('sets', exercise.sets);
+    if (exercise.ex_id) {
+        formData.append('ex_id', exercise.ex_id);
+    }
+    
+    // 디버그: 전송할 FormData 로깅
+    const debugPayload = {};
+    formData.forEach((v, k) => { debugPayload[k] = v; });
+    console.log('[EDIT] updateExerciseInSession - payload:', debugPayload);
+
+    fetch('', {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+    })
+    .then(response => {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            console.log('[EDIT] updateExerciseInSession - response is JSON');
+            return response.json();
+        } else {
+            return response.text().then(text => {
+                console.error('JSON이 아닌 응답:', text);
+                console.log('[EDIT] updateExerciseInSession - raw response text:', text);
+                throw new Error('서버에서 JSON이 아닌 응답을 반환했습니다: ' + text);
+            });
+        }
+    })
+    .then(data => {
+        // 디버그: 서버 응답 로깅
+        console.log('[EDIT] updateExerciseInSession - response JSON:', data);
+        if (data && data.debug) {
+            console.log('[EDIT] server debug.before:', data.debug.before);
+            console.log('[EDIT] server debug.after:', data.debug.after);
+            console.log('[EDIT] server debug.requested:', data.debug.requested);
+            console.log('[EDIT] server debug.affected_rows:', data.debug.affected_rows);
+        }
+        if (data.success) {
+            showCustomAlert('운동이 성공적으로 수정되었습니다.', '수정 완료', 'check-circle');
+            // 모달 닫기
+            bootstrap.Modal.getInstance(document.getElementById('editExerciseModal')).hide();
+            // 페이지 새로고침
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        } else {
+            console.warn('[EDIT] update failed - message:', data.message);
+            showCustomAlert('운동 수정에 실패했습니다: ' + data.message, '수정 실패', 'exclamation-triangle');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showCustomAlert('운동 수정 중 오류가 발생했습니다: ' + error.message, '오류', 'exclamation-triangle');
+    });
+}
+
+// 순서 변경 (위/아래)
+function reorderExercise(wxId, direction) {
+    if (!['up', 'down'].includes(direction)) return;
+    const formData = new FormData();
+    formData.append('action', 'reorder_exercise');
+    formData.append('wx_id', wxId);
+    formData.append('direction', direction);
+    
+    console.log('[REORDER] request:', { wxId, direction });
+    fetch('', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        console.log('[REORDER] response:', data);
+        if (data.success) {
+            location.reload();
+        } else {
+            // 더 자연스러운 안내로 대체
+            showCustomAlert(data.message || '더 이상 이동할 수 없습니다.', '안내', 'info-circle');
+        }
+    })
+    .catch(err => {
+        console.error('[REORDER] error:', err);
+        showCustomAlert('순서 변경 중 오류가 발생했습니다.', '오류', 'exclamation-triangle');
+    });
+}
+
 // 운동 추가 모달 열기
 function openAddExerciseModal() {
     const modal = new bootstrap.Modal(document.getElementById('addExerciseModal'));
@@ -2335,9 +2747,13 @@ function displayExerciseCard(exercise, searchResults, index) {
             </div>
         `;
     } else if (searchResults.length === 1) {
-        // 검색 결과가 1개인 경우
+        // 검색 결과가 1개인 경우: 추가/수정 모두에서 동일하게 첫 결과를 기본 선택되도록 hidden 라디오를 추가
         const result = searchResults[0];
         html += `
+            <input type="radio" class="form-check-input d-none" 
+                   name="selected_exercise_${safeName}" 
+                   id="ex_${safeName}_0_hidden" 
+                   value="${result.ex_id}" checked>
             <div class="text-success">
                 ✓ ${result.name_kr}
                 ${result.name_en ? `<small class="text-muted">(${result.name_en})</small>` : ''}
@@ -2508,22 +2924,34 @@ function addExercisesToSession(exercises) {
         },
         body: `action=add_exercises&session_id=${sessionId}&exercises_data=${encodeURIComponent(JSON.stringify(exercises))}`
     })
-    .then(response => response.json())
+    .then(response => {
+        // 응답이 JSON인지 확인
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            return response.json();
+        } else {
+            // JSON이 아닌 경우 텍스트로 읽기
+            return response.text().then(text => {
+                console.error('JSON이 아닌 응답:', text);
+                throw new Error('서버에서 JSON이 아닌 응답을 반환했습니다: ' + text);
+            });
+        }
+    })
     .then(data => {
         if (data.success) {
-            showMessage(`${exercises.length}개의 운동이 성공적으로 추가되었습니다.`, 'success');
+            showCustomAlert(`${exercises.length}개의 운동이 성공적으로 추가되었습니다.`, '운동 추가 완료', 'check-circle');
             // 페이지 새로고침으로 목록 업데이트
             setTimeout(() => {
                 location.reload();
             }, 1000);
         } else {
             console.error('운동 추가 실패:', data.message);
-            showMessage('운동 추가에 실패했습니다: ' + data.message, 'error');
+            showCustomAlert('운동 추가에 실패했습니다: ' + data.message, '추가 실패', 'exclamation-triangle');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        showMessage('운동 추가 중 오류가 발생했습니다.', 'error');
+        showCustomAlert('운동 추가 중 오류가 발생했습니다: ' + error.message, '오류', 'exclamation-triangle');
     });
 }
 
@@ -3192,6 +3620,15 @@ function updateOriginalExerciseList(exerciseId, weight, reps, sets) {
 
 #exerciseInfoModal .modal-backdrop {
     z-index: 1079 !important;
+}
+
+/* 운동 수정 모달 z-index 설정 */
+#editExerciseModal {
+    z-index: 1090 !important;
+}
+
+#editExerciseModal .modal-backdrop {
+    z-index: 1089 !important;
 }
 
 /* 세트 조정 모달 z-index 설정 */
