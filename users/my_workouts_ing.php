@@ -241,11 +241,13 @@ if ($_POST) {
                 $wx_id = $_POST['wx_id'];
                 $weight = (float)$_POST['weight'];
                 $reps = (int)$_POST['reps'];
+                $time = isset($_POST['time']) ? (int)$_POST['time'] : 0;
                 
                 error_log("파싱된 변수들:");
                 error_log("- wx_id: " . var_export($wx_id, true) . " (타입: " . gettype($wx_id) . ")");
                 error_log("- weight: " . var_export($weight, true) . " (타입: " . gettype($weight) . ")");
                 error_log("- reps: " . var_export($reps, true) . " (타입: " . gettype($reps) . ")");
+                error_log("- time: " . var_export($time, true) . " (타입: " . gettype($time) . ")");
                 
                 // wx_id 존재 여부 확인
                 error_log("wx_id 존재 여부 확인 쿼리 실행");
@@ -323,9 +325,9 @@ if ($_POST) {
                 } else {
                     // 세트 데이터만 업데이트
                     error_log("세트 데이터만 업데이트 쿼리 실행");
-                    $query = "UPDATE m_workout_exercise SET weight = ?, reps = ? WHERE wx_id = ?";
+                    $query = "UPDATE m_workout_exercise SET weight = ?, reps = ?, time_seconds = ? WHERE wx_id = ?";
                     error_log("쿼리: $query");
-                    error_log("파라미터: weight=$weight, reps=$reps, wx_id=$wx_id");
+                    error_log("파라미터: weight=$weight, reps=$reps, time=$time, wx_id=$wx_id");
                     
                     // 업데이트 전 현재 값과 비교
                     if ($exercise_exists) {
@@ -337,7 +339,7 @@ if ($_POST) {
                     }
                     
                     $stmt = $pdo->prepare($query);
-                    $result = $stmt->execute([$weight, $reps, $wx_id]);
+                    $result = $stmt->execute([$weight, $reps, $time, $wx_id]);
                 }
                 
                 $affected_rows = $stmt->rowCount();
@@ -2233,6 +2235,23 @@ function togglePartDetails(partName) {
                         <button class="btn btn-outline-secondary btn-lg ms-3" onclick="adjustValue('reps', 1)">+</button>
                     </div>
                 </div>
+                
+                <!-- 시간 조정 (초) -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">시간 (초)</label>
+                    <div class="d-flex align-items-center">
+                        <button class="btn btn-outline-secondary btn-lg me-3" onclick="adjustValue('time', -5)">-5</button>
+                        <div class="flex-grow-1 text-center">
+                            <div class="h3 mb-3" id="timeDisplay">0초</div>
+                            <input type="range" class="form-range" id="timeSlider" min="0" max="300" step="5" value="0" oninput="updateTimeDisplay(this.value)">
+                            <div class="d-flex justify-content-between text-muted small mt-1">
+                                <span>0초</span>
+                                <span>300초</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline-secondary btn-lg ms-3" onclick="adjustValue('time', 5)">+5</button>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer d-flex justify-content-between">
                 <button type="button" class="btn btn-primary" onclick="applySetAdjustment()">적용</button>
@@ -2430,16 +2449,21 @@ function openExerciseModal(exerciseId, exerciseName, weight, reps, sets) {
             setCircle.setAttribute('data-set', i);
             setCircle.setAttribute('data-weight', weight);
             setCircle.setAttribute('data-reps', reps);
+            setCircle.setAttribute('data-time', 0);
             
-            // 무게, 횟수 표시
+            // 무게, 횟수, 시간 표시
             setCircle.innerHTML = `
                 <div class="set-weight">${weight}kg</div>
                 <div class="set-divider"></div>
                 <div class="set-reps">${reps}회</div>
+                <div class="set-time">0초</div>
             `;
             
             // 클릭 이벤트 추가
-            setCircle.onclick = () => openSetAdjustModal(i, weight, reps);
+            setCircle.onclick = () => {
+                const currentTime = parseInt(setCircle.getAttribute('data-time')) || 0;
+                openSetAdjustModal(i, weight, reps, currentTime);
+            };
             
             const setTime = document.createElement('div');
             setTime.className = 'set-time';
@@ -2637,16 +2661,21 @@ function addNewSet(setNumber, weight = null, reps = null) {
     setCircle.setAttribute('data-set', setNumber);
     setCircle.setAttribute('data-weight', weight);
     setCircle.setAttribute('data-reps', reps);
+    setCircle.setAttribute('data-time', 0);
     
-    // 무게, 횟수 표시
+    // 무게, 횟수, 시간 표시
     setCircle.innerHTML = `
         <div class="set-weight">${weight}kg</div>
         <div class="set-divider"></div>
         <div class="set-reps">${reps}회</div>
+        <div class="set-time">0초</div>
     `;
     
     // 클릭 이벤트 추가
-    setCircle.onclick = () => openSetAdjustModal(setNumber, weight, reps);
+    setCircle.onclick = () => {
+        const currentTime = parseInt(setCircle.getAttribute('data-time')) || 0;
+        openSetAdjustModal(setNumber, weight, reps, currentTime);
+    };
     
     const setTime = document.createElement('div');
     setTime.className = 'set-time';
@@ -3310,7 +3339,7 @@ function addExercisesToSession(exercises) {
 
 
 // 세트 조정 모달 열기
-function openSetAdjustModal(setNumber, currentWeight, currentReps) {
+function openSetAdjustModal(setNumber, currentWeight, currentReps, currentTime = 0) {
     console.log('=== openSetAdjustModal 함수 시작 ===');
     console.log('파라미터들:', { setNumber, currentWeight, currentReps });
     console.log('현재 modalExerciseId:', modalExerciseId);
@@ -3325,8 +3354,10 @@ function openSetAdjustModal(setNumber, currentWeight, currentReps) {
     // 슬라이더와 디스플레이 업데이트
     document.getElementById('weightSlider').value = currentWeight;
     document.getElementById('repsSlider').value = currentReps;
+    document.getElementById('timeSlider').value = currentTime;
     document.getElementById('weightDisplay').textContent = `${currentWeight}kg`;
     document.getElementById('repsDisplay').textContent = `${currentReps}회`;
+    document.getElementById('timeDisplay').textContent = `${currentTime}초`;
     
     // 현재 조정 중인 세트 번호와 세션 ID 저장
     window.currentAdjustingSet = setNumber;
@@ -3354,8 +3385,10 @@ function adjustValue(type, change) {
     slider.value = newValue;
     if (type === 'weight') {
         display.textContent = `${newValue}kg`;
-    } else {
+    } else if (type === 'reps') {
         display.textContent = `${newValue}회`;
+    } else if (type === 'time') {
+        display.textContent = `${newValue}초`;
     }
 }
 
@@ -3368,16 +3401,21 @@ function updateRepsDisplay(value) {
     document.getElementById('repsDisplay').textContent = `${value}회`;
 }
 
+function updateTimeDisplay(value) {
+    document.getElementById('timeDisplay').textContent = `${value}초`;
+}
+
 // 세트 조정 적용
 function applySetAdjustment() {
     console.log('=== applySetAdjustment 함수 시작 ===');
     
     const newWeight = parseFloat(document.getElementById('weightSlider').value) || 0;
     const newReps = parseInt(document.getElementById('repsSlider').value) || 0;
+    const newTime = parseInt(document.getElementById('timeSlider').value) || 0;
     const setNumber = window.currentAdjustingSet;
     const sessionId = window.currentSessionId;
     
-    console.log('새로운 값들:', { newWeight, newReps, setNumber, sessionId });
+    console.log('새로운 값들:', { newWeight, newReps, newTime, setNumber, sessionId });
     
     // 해당 세트의 현재 값 확인
     const setElement = document.querySelector(`[data-set="${setNumber}"]`);
@@ -3403,16 +3441,19 @@ function applySetAdjustment() {
         
         setElement.setAttribute('data-weight', newWeight);
         setElement.setAttribute('data-reps', newReps);
+        setElement.setAttribute('data-time', newTime);
         
         // 화면에 표시된 값 업데이트
         const weightElement = setElement.querySelector('.set-weight');
         const repsElement = setElement.querySelector('.set-reps');
+        const timeElement = setElement.querySelector('.set-time');
         
         if (weightElement) weightElement.textContent = `${newWeight}kg`;
         if (repsElement) repsElement.textContent = `${newReps}회`;
+        if (timeElement) timeElement.textContent = `${newTime}초`;
         
         // 데이터베이스에 저장
-        saveSetAdjustment(sessionId, setNumber, newWeight, newReps);
+        saveSetAdjustment(sessionId, setNumber, newWeight, newReps, newTime);
     }
     
     // 모달 닫기
@@ -3420,9 +3461,9 @@ function applySetAdjustment() {
 }
 
 // 세트 조정 데이터베이스 저장
-function saveSetAdjustment(sessionId, setNumber, weight, reps) {
+function saveSetAdjustment(sessionId, setNumber, weight, reps, time) {
     console.log('=== saveSetAdjustment 함수 시작 ===');
-    console.log('파라미터들:', { sessionId, setNumber, weight, reps });
+    console.log('파라미터들:', { sessionId, setNumber, weight, reps, time });
     
     // 현재 운동 ID 가져오기
     const exerciseId = modalExerciseId;
@@ -3434,7 +3475,7 @@ function saveSetAdjustment(sessionId, setNumber, weight, reps) {
         return;
     }
     
-    const requestBody = `action=update_set_data&wx_id=${exerciseId}&weight=${weight}&reps=${reps}`;
+    const requestBody = `action=update_set_data&wx_id=${exerciseId}&weight=${weight}&reps=${reps}&time=${time}`;
     console.log('요청 본문:', requestBody);
     
     fetch('', {
@@ -3627,12 +3668,14 @@ function loadCompletedSets(sets) {
             setCircle.setAttribute('data-set', set.set_no);
             setCircle.setAttribute('data-weight', set.weight);
             setCircle.setAttribute('data-reps', set.reps);
+            setCircle.setAttribute('data-time', set.time_seconds || 0);
             
             // 완료된 세트 표시
             setCircle.innerHTML = `
                 <div class="set-weight">${set.weight == Math.floor(set.weight) ? Math.floor(set.weight) : set.weight.toFixed(1)}kg</div>
                 <div class="set-divider"></div>
                 <div class="set-reps">${set.reps}회</div>
+                <div class="set-time">${set.time_seconds || 0}초</div>
             `;
             
             setWrapper.appendChild(setCircle);
@@ -4050,6 +4093,7 @@ function updateModalSetsContainer() {
             setCircle.setAttribute('data-set', i);
             setCircle.setAttribute('data-weight', currentWeight);
             setCircle.setAttribute('data-reps', currentReps);
+            setCircle.setAttribute('data-time', 0);
             
             // 완료된 세트인지 확인
             const isCompleted = i <= modalCompletedSets;
@@ -4062,10 +4106,14 @@ function updateModalSetsContainer() {
                 <div class="set-weight">${displayWeight}kg</div>
                 <div class="set-divider"></div>
                 <div class="set-reps">${currentReps}회</div>
+                <div class="set-time">0초</div>
             `;
             
             // 클릭 이벤트 추가
-            setCircle.onclick = () => openSetAdjustModal(i, currentWeight, currentReps);
+            setCircle.onclick = () => {
+                const currentTime = parseInt(setCircle.getAttribute('data-time')) || 0;
+                openSetAdjustModal(i, currentWeight, currentReps, currentTime);
+            };
             
             setWrapper.appendChild(setCircle);
             setsContainer.appendChild(setWrapper);
