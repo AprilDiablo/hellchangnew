@@ -109,7 +109,7 @@ try {
                 
                 $stmt->execute([
                     null, // ex_id는 null
-                    $workout['weight'],
+                    (float)$workout['weight'],
                     $workout['reps'],
                     $workout['sets'],
                     $workout['exercise_name'],
@@ -127,7 +127,7 @@ try {
                 
                 $stmt->execute([
                     $workout['exercise_id'],
-                    $workout['weight'],
+                    (float)$workout['weight'],
                     $workout['reps'],
                     $workout['sets'],
                     $workout['exercise_name'],
@@ -166,7 +166,7 @@ try {
                         $sessionId,
                         null, // ex_id는 null
                         $orderNo,
-                        $workout['weight'],
+                        (float)$workout['weight'],
                         $workout['reps'],
                         $workout['sets'],
                         $workout['exercise_name'],
@@ -185,7 +185,7 @@ try {
                         $sessionId,
                         $workout['exercise_id'],
                         $orderNo,
-                        $workout['weight'],
+                        (float)$workout['weight'],
                         $workout['reps'],
                         $workout['sets'],
                         $workout['exercise_name'],

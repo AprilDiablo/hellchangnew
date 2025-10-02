@@ -178,7 +178,7 @@ function parseWorkoutPlan($text) {
 
             for ($i = 0; $i < count($parts); $i++) {
                 if (is_numeric($parts[$i])) {
-                    $numbers[] = (int)$parts[$i];
+                    $numbers[] = (float)$parts[$i];
                 } else {
                     if (empty($exerciseName)) {
                         $exerciseName = $parts[$i];
@@ -393,7 +393,11 @@ include 'header.php';
                             <?php endif; ?>
                             <strong><?= htmlspecialchars($exercise['exercise_name']) ?></strong>
                             <small class="text-muted d-block">
-                                <?= $exercise['weight'] ? $exercise['weight'] . 'kg' : '0kg' ?> × 
+                                <?php 
+                                $weight = $exercise['weight'] ?: 0;
+                                $displayWeight = $weight == floor($weight) ? number_format($weight, 0) : number_format($weight, 1);
+                                echo $displayWeight . 'kg';
+                                ?> × 
                                 <?= $exercise['reps'] ? $exercise['reps'] . '회' : '0회' ?> × 
                                 <?= $exercise['sets'] ? $exercise['sets'] . '세트' : '0세트' ?>
                             </small>
@@ -449,7 +453,8 @@ include 'header.php';
                         $weight = $workout['weight'] ?: 0;
                         $reps = $workout['reps'] ?: 0;
                         $sets = $workout['sets'] ?: 0;
-                        $workoutText = $workout['name_kr'] . ' ' . number_format($weight, 0) . ' ' . $reps . ' ' . $sets;
+                        $displayWeight = $weight == floor($weight) ? number_format($weight, 0) : number_format($weight, 1);
+                        $workoutText = $workout['name_kr'] . ' ' . $displayWeight . ' ' . $reps . ' ' . $sets;
                         echo htmlspecialchars($workoutText);
                     } elseif ($editMode && !empty($existingWorkouts)) {
                         // 세션 수정 모드일 때 기존 데이터를 텍스트로 변환
@@ -458,7 +463,8 @@ include 'header.php';
                             $weight = $workout['weight'] ?: 0;
                             $reps = $workout['reps'] ?: 0;
                             $sets = $workout['sets'] ?: 0;
-                            $workoutText .= $workout['name_kr'] . ' ' . number_format($weight, 0) . ' ' . $reps . ' ' . $sets . "\n";
+                            $displayWeight = $weight == floor($weight) ? number_format($weight, 0) : number_format($weight, 1);
+                            $workoutText .= $workout['name_kr'] . ' ' . $displayWeight . ' ' . $reps . ' ' . $sets . "\n";
                         }
                         echo htmlspecialchars(trim($workoutText));
                     }
@@ -589,7 +595,10 @@ include 'header.php';
                         
                         <!-- 운동 정보 표시 -->
                         <div class="text-muted">
-                            <strong><?= number_format($workout['weight'], 0) ?>kg</strong> × <strong><?= $workout['reps'] ?>회</strong> × <strong><?= $workout['sets'] ?>세트</strong>
+                            <strong><?php 
+                            $weight = (float)$workout['weight'];
+                            echo $weight == floor($weight) ? number_format($weight, 0) : number_format($weight, 1);
+                            ?>kg</strong> × <strong><?= $workout['reps'] ?>회</strong> × <strong><?= $workout['sets'] ?>세트</strong>
                         </div>
                     </div>
                 </div>
@@ -677,7 +686,10 @@ include 'header.php';
         $reps = $exercise['reps'] ?: 0;
         $sets = $exercise['sets'] ?: 0;
         ?>
-        workoutText += '<?= $warmupPrefix ?><?= addslashes($exercise['exercise_name']) ?> <?= $weight ?> <?= $reps ?> <?= $sets ?>\n';
+        <?php
+        $displayWeight = $weight == floor($weight) ? number_format($weight, 0) : number_format($weight, 1);
+        ?>
+        workoutText += '<?= $warmupPrefix ?><?= addslashes($exercise['exercise_name']) ?> <?= $displayWeight ?> <?= $reps ?> <?= $sets ?>\n';
         <?php endforeach; ?>
         
         document.getElementById('workout_plan').value = workoutText.trim();
@@ -704,7 +716,7 @@ include 'header.php';
             if (data.success) {
                 // 운동 데이터를 텍스트로 변환 (번호 제거)
                 const workoutTexts = data.exercises.map((exercise) => {
-                    const weight = Math.floor(exercise.weight); // 소수점 제거
+                    const weight = exercise.weight == Math.floor(exercise.weight) ? Math.floor(exercise.weight) : parseFloat(exercise.weight).toFixed(1);
                     return exercise.name_kr + ' ' + weight + ' ' + exercise.reps + ' ' + exercise.sets;
                 });
                 
@@ -922,7 +934,7 @@ include 'header.php';
         
         if (weightInput && repsInput && setsInput) {
             // 입력 폼에서 값 가져오기
-            const weight = parseInt(weightInput.value) || 0;
+            const weight = parseFloat(weightInput.value) || 0;
             const reps = parseInt(repsInput.value) || 0;
             const sets = parseInt(setsInput.value) || 0;
             
@@ -996,7 +1008,7 @@ include 'header.php';
                 const workoutData = {
                     exercise_name: exerciseName,
                     exercise_id: exerciseId,
-                    weight: parseInt(match[1]),
+                    weight: parseFloat(match[1]),
                     reps: parseInt(match[2]),
                     sets: parseInt(match[3]),
                     order_no: orderIndex + 1  // 순서 번호 추가 (1부터 시작)
