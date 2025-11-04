@@ -109,8 +109,8 @@ if ($_POST) {
                 
                 // 운동 시간 수정
                 $session_id = $_POST['session_id'];
-                $start_time_raw = $_POST['start_time'] ?: null;
-                $end_time_raw = $_POST['end_time'] ?: null;
+                $start_time_raw = isset($_POST['start_time']) ? $_POST['start_time'] : null;
+                $end_time_raw = isset($_POST['end_time']) ? $_POST['end_time'] : null;
                 
                 // 시간을 DATETIME 형식으로 변환 (오늘 날짜 + 시간)
                 $start_time = null;
@@ -142,6 +142,19 @@ if ($_POST) {
                     header('Content-Type: application/json');
                     echo json_encode(['success' => false, 'message' => '권한이 없습니다.']);
                     exit;
+                }
+                
+                // 기존 시간 정보 가져오기
+                $stmt = $pdo->prepare("SELECT start_time, end_time FROM m_workout_session WHERE session_id = ?");
+                $stmt->execute([$session_id]);
+                $existing_times = $stmt->fetch();
+                
+                // 전송되지 않은 시간은 기존 값 유지
+                if ($start_time === null && $existing_times['start_time']) {
+                    $start_time = $existing_times['start_time'];
+                }
+                if ($end_time === null && $existing_times['end_time']) {
+                    $end_time = $existing_times['end_time'];
                 }
                 
                 // 시간 업데이트
@@ -623,6 +636,10 @@ if ($_POST) {
                 $stmt->execute([$searchPattern, $searchPattern, $searchPattern]);
                 $exercises = $stmt->fetchAll();
                 
+                // 디버깅: 검색 결과 로깅
+                error_log("[DEBUG] 검색어: $searchTerm");
+                error_log("[DEBUG] 검색 결과: " . json_encode($exercises));
+                
                 $response = [
                     'success' => true,
                     'exercises' => $exercises
@@ -636,6 +653,9 @@ if ($_POST) {
                 // 여러 운동 추가
                 $session_id = $_POST['session_id'];
                 $exercisesData = json_decode($_POST['exercises_data'], true);
+                
+                // 디버깅: 받은 데이터 로깅
+                error_log("[DEBUG] 받은 운동 데이터: " . json_encode($exercisesData));
                 
                 // 사용자 권한 확인
                 $stmt = $pdo->prepare("SELECT user_id FROM m_workout_session WHERE session_id = ? AND user_id = ?");
@@ -654,47 +674,71 @@ if ($_POST) {
                 foreach ($exercisesData as $exerciseData) {
                     $currentMaxOrder++;
                     
-                    // 운동 검색 (today.php의 searchExercise 함수와 유사한 로직)
-                    $exerciseResults = searchExerciseForAdd($pdo, $exerciseData['exercise_name']);
-                    
-                    if (!empty($exerciseResults)) {
-                        // 검색된 운동이 있으면 첫 번째 결과 사용
-                        $bestMatch = $exerciseResults[0];
+                    // 클라이언트에서 선택한 ex_id가 있으면 사용
+                    if (isset($exerciseData['ex_id']) && !empty($exerciseData['ex_id'])) {
+                        // 선택된 운동 ID 사용
                         $stmt = $pdo->prepare("
                             INSERT INTO m_workout_exercise (session_id, ex_id, order_no, weight, reps, sets, original_exercise_name, is_temp)
                             VALUES (?, ?, ?, ?, ?, ?, ?, 0)
                         ");
                         $stmt->execute([
                             $session_id,
-                            $bestMatch['ex_id'],
+                            $exerciseData['ex_id'],
                             $currentMaxOrder,
                             (float)$exerciseData['weight'],
                             (int)$exerciseData['reps'],
                             (int)$exerciseData['sets'],
                             $exerciseData['exercise_name']
                         ]);
-                    } else {
-                        // 검색된 운동이 없으면 임시 운동으로 추가
-                        $stmt = $pdo->prepare("
-                            INSERT INTO m_temp_exercise (user_id, exercise_name, status)
-                            VALUES (?, ?, 'pending')
-                        ");
-                        $stmt->execute([$user['id'], $exerciseData['exercise_name']]);
-                        $tempExId = $pdo->lastInsertId();
                         
-                        $stmt = $pdo->prepare("
-                            INSERT INTO m_workout_exercise (session_id, ex_id, order_no, weight, reps, sets, original_exercise_name, temp_ex_id, is_temp)
-                            VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 1)
-                        ");
-                        $stmt->execute([
-                            $session_id,
-                            $currentMaxOrder,
-                            $exerciseData['weight'],
-                            $exerciseData['reps'],
-                            $exerciseData['sets'],
-                            $exerciseData['exercise_name'],
-                            $tempExId
-                        ]);
+                        error_log("[DEBUG] 선택된 운동 저장: ex_id=" . $exerciseData['ex_id'] . ", 운동명=" . $exerciseData['exercise_name']);
+                    } else {
+                        // ex_id가 없으면 검색 수행
+                        $exerciseResults = searchExerciseForAdd($pdo, $exerciseData['exercise_name']);
+                        
+                        if (!empty($exerciseResults)) {
+                            // 검색된 운동이 있으면 첫 번째 결과 사용
+                            $bestMatch = $exerciseResults[0];
+                            $stmt = $pdo->prepare("
+                                INSERT INTO m_workout_exercise (session_id, ex_id, order_no, weight, reps, sets, original_exercise_name, is_temp)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                            ");
+                            $stmt->execute([
+                                $session_id,
+                                $bestMatch['ex_id'],
+                                $currentMaxOrder,
+                                (float)$exerciseData['weight'],
+                                (int)$exerciseData['reps'],
+                                (int)$exerciseData['sets'],
+                                $exerciseData['exercise_name']
+                            ]);
+                            
+                            error_log("[DEBUG] 검색된 운동 저장: ex_id=" . $bestMatch['ex_id'] . ", 운동명=" . $exerciseData['exercise_name']);
+                        } else {
+                            // 검색된 운동이 없으면 임시 운동으로 추가
+                            $stmt = $pdo->prepare("
+                                INSERT INTO m_temp_exercise (user_id, exercise_name, status)
+                                VALUES (?, ?, 'pending')
+                            ");
+                            $stmt->execute([$user['id'], $exerciseData['exercise_name']]);
+                            $tempExId = $pdo->lastInsertId();
+                            
+                            $stmt = $pdo->prepare("
+                                INSERT INTO m_workout_exercise (session_id, ex_id, order_no, weight, reps, sets, original_exercise_name, temp_ex_id, is_temp)
+                                VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 1)
+                            ");
+                            $stmt->execute([
+                                $session_id,
+                                $currentMaxOrder,
+                                (float)$exerciseData['weight'],
+                                (int)$exerciseData['reps'],
+                                (int)$exerciseData['sets'],
+                                $exerciseData['exercise_name'],
+                                $tempExId
+                            ]);
+                            
+                            error_log("[DEBUG] 임시 운동 저장: 운동명=" . $exerciseData['exercise_name']);
+                        }
                     }
                     $addedCount++;
                 }
@@ -1021,7 +1065,7 @@ foreach ($workoutSessions as $index => $session) {
     
     // 사용자별 프리/엔드루틴 설정 가져오기
     $stmt = $pdo->prepare("
-        SELECT pre_routine, post_routine 
+        SELECT pre_routine, post_routine, pre_routine_enabled, post_routine_enabled 
         FROM m_routine_settings 
         WHERE user_id = ?
     ");
@@ -1030,6 +1074,8 @@ foreach ($workoutSessions as $index => $session) {
     
     $preRoutine = $routineSettings['pre_routine'] ?? '';
     $postRoutine = $routineSettings['post_routine'] ?? '';
+    $preRoutineEnabled = $routineSettings['pre_routine_enabled'] ?? 1;
+    $postRoutineEnabled = $routineSettings['post_routine_enabled'] ?? 1;
     
     // 해당 세션의 루틴 기록 가져오기
     $stmt = $pdo->prepare("
@@ -1061,6 +1107,8 @@ foreach ($workoutSessions as $index => $session) {
         'session_percentage' => $totalDayVolume > 0 ? round(($sessionVolume / $totalDayVolume) * 100, 1) : 0,
         'pre_routine' => $preRoutine,
         'post_routine' => $postRoutine,
+        'pre_routine_enabled' => $preRoutineEnabled,
+        'post_routine_enabled' => $postRoutineEnabled,
         'pre_routine_record' => $preRoutineRecord,
         'post_routine_record' => $postRoutineRecord
     ];
@@ -1257,8 +1305,8 @@ include 'header.php';
                             ?>
                         </h4>
                     </div>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goBack()">
-                        <i class="fas fa-arrow-left me-1"></i>뒤로가기
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goBack()" title="뒤로가기">
+                        <i class="fas fa-arrow-left"></i>
                     </button>
                 </div>
             </div>
@@ -1300,7 +1348,7 @@ include 'header.php';
     <?php foreach ($sessionsWithExercises as $sessionData): ?>
     
     <!-- 프리루틴 -->
-    <?php if (!empty($sessionData['pre_routine'])): ?>
+    <?php if (!empty($sessionData['pre_routine']) && $sessionData['pre_routine_enabled']): ?>
     <div class="mb-3">
         <?php if ($sessionData['pre_routine_record']): ?>
             <!-- 루틴 기록이 있는 경우 -->
@@ -1450,7 +1498,7 @@ include 'header.php';
     <?php endforeach; ?>
     
     <!-- 포스트루틴 -->
-    <?php if (!empty($sessionData['post_routine'])): ?>
+    <?php if (!empty($sessionData['post_routine']) && $sessionData['post_routine_enabled']): ?>
     <div class="mb-3">
         <?php if ($sessionData['post_routine_record']): ?>
             <!-- 루틴 기록이 있는 경우 -->
@@ -2311,18 +2359,22 @@ function togglePartDetails(partName) {
             <div class="modal-body text-center">
                 <div class="mb-4">
                     <div class="row">
-                        <div class="col-12">
-                            <label class="form-label fw-bold">무게 (kg)</label>
+                        <div class="col-6">
+                            <label class="form-label fw-bold">시간</label>
+                            <select class="form-select form-select-lg" id="timePickerHour">
+                                <!-- JavaScript로 동적 생성 -->
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold">분</label>
                             <select class="form-select form-select-lg" id="timePickerMinute">
-                                <?php for($kg = 0; $kg <= 200; $kg += 0.5): ?>
-                                    <option value="<?= number_format($kg, 1) ?>"><?= number_format($kg, 1) ?>kg</option>
-                                <?php endfor; ?>
+                                <!-- JavaScript로 동적 생성 -->
                             </select>
                         </div>
                     </div>
                 </div>
                 <div class="alert alert-info">
-                    <i class="fas fa-info-circle"></i> 0.5kg 단위로 설정됩니다.
+                    <i class="fas fa-info-circle"></i> 5분 단위로 설정됩니다.
                 </div>
             </div>
             <div class="modal-footer justify-content-center">
@@ -3058,6 +3110,15 @@ function reorderExercise(wxId, direction) {
     });
 }
 
+// 선택된 운동 추적 객체
+window.selectedExercises = {};
+
+// 선택된 운동 업데이트 함수
+function updateSelectedExercise(safeName, exId) {
+    window.selectedExercises[safeName] = exId;
+    console.log(`[DEBUG] 선택된 운동 업데이트: ${safeName} = ${exId}`);
+}
+
 // 운동 추가 모달 열기
 function openAddExerciseModal() {
     const modal = new bootstrap.Modal(document.getElementById('addExerciseModal'));
@@ -3071,6 +3132,7 @@ function openAddExerciseModal() {
     // 파싱된 운동 초기화
     window.parsedExercises = null;
     window.exerciseResults = {};
+    window.selectedExercises = {};
 }
 
 // 검색 및 파싱 (today.php 방식)
@@ -3130,8 +3192,15 @@ function searchExercisesForAdd(exercises) {
         })
         .then(response => response.json())
         .then(data => {
+            console.log(`[DEBUG] 검색 결과 for ${exercise.exercise_name}:`, data);
             if (data.success) {
                 displayExerciseCard(exercise, data.exercises, index);
+                // 첫 번째 결과를 기본 선택으로 설정
+                const safeName = exercise.exercise_name.replace(/[^a-zA-Z0-9]/g, '_');
+                if (data.exercises.length > 0 && !window.selectedExercises[safeName]) {
+                    window.selectedExercises[safeName] = data.exercises[0].ex_id;
+                    console.log(`[DEBUG] 기본 선택 설정: ${safeName} = ${data.exercises[0].ex_id}`);
+                }
             } else {
                 displayExerciseCard(exercise, [], index);
             }
@@ -3186,7 +3255,8 @@ function displayExerciseCard(exercise, searchResults, index) {
                        name="selected_exercise_${safeName}" 
                        id="ex_${safeName}_0" 
                        value="${searchResults[0].ex_id}" 
-                       checked>
+                       checked
+                       onchange="console.log('[DEBUG] 라디오 변경:', '${searchResults[0].name_kr}', '${searchResults[0].ex_id}'); updateSelectedExercise('${safeName}', '${searchResults[0].ex_id}')">
                 <label class="form-check-label" for="ex_${safeName}_0">
                     ${searchResults[0].name_kr}
                     ${searchResults[0].name_en ? `<small class="text-muted">(${searchResults[0].name_en})</small>` : ''}
@@ -3208,7 +3278,8 @@ function displayExerciseCard(exercise, searchResults, index) {
                     <input class="form-check-input" type="radio" 
                            name="selected_exercise_${safeName}" 
                            id="ex_${safeName}_${i}" 
-                           value="${result.ex_id}">
+                           value="${result.ex_id}"
+                           onchange="console.log('[DEBUG] 라디오 변경:', '${result.name_kr}', '${result.ex_id}'); updateSelectedExercise('${safeName}', '${result.ex_id}')">
                     <label class="form-check-label" for="ex_${safeName}_${i}">
                         ${result.name_kr}
                         ${result.name_en ? `<small class="text-muted">(${result.name_en})</small>` : ''}
@@ -3288,10 +3359,16 @@ function addSelectedExercise() {
         const card = document.querySelector(`[data-index="${index}"]`);
         
         if (card) {
-            // 라디오 버튼이 있는 운동들 (여러 검색 결과)
-            const checkedRadio = card.querySelector('input[type="radio"]:checked');
-            if (checkedRadio) {
-                const exerciseId = checkedRadio.value;
+            // 추적된 선택 사용
+            const selectedExId = window.selectedExercises[safeName];
+            
+            // 디버깅: 선택된 운동 정보 로깅
+            console.log(`[DEBUG] 운동: ${exercise.exercise_name}`);
+            console.log(`[DEBUG] 추적된 선택: ${selectedExId}`);
+            console.log(`[DEBUG] 전체 선택 상태:`, window.selectedExercises);
+            
+            if (selectedExId) {
+                const exerciseId = selectedExId;
                 const exerciseName = exercise.exercise_name;
                 
                 // 무게, 횟수, 세트 값 가져오기
@@ -3325,15 +3402,36 @@ function addSelectedExercise() {
     });
     
     if (exercisesToAdd.length > 0) {
-        addExercisesToSession(exercisesToAdd);
+        // 저장하기 전에 선택된 내용을 화면에 표시
+        showSelectedExercises(exercisesToAdd);
     } else {
         showCustomAlert('추가할 운동을 선택해주세요.', '선택 오류', 'exclamation-circle');
     }
 }
 
+// 선택된 운동들을 바로 추가
+function showSelectedExercises(exercises) {
+    // 기존 모달들 닫기
+    const existingModals = document.querySelectorAll('.modal.show');
+    existingModals.forEach(modal => {
+        const bsModal = bootstrap.Modal.getInstance(modal);
+        if (bsModal) {
+            bsModal.hide();
+        }
+    });
+    
+    // 바로 운동 추가 실행
+    addExercisesToSession(exercises);
+}
+
+
 // 세션에 운동들 추가
 function addExercisesToSession(exercises) {
     const sessionId = <?= $sessionData['session']['session_id'] ?? 'null' ?>;
+    
+    // 디버깅: 전송할 데이터 확인
+    console.log('[DEBUG] 전송할 운동 데이터:', exercises);
+    console.log('[DEBUG] 세션 ID:', sessionId);
     
     fetch('', {
         method: 'POST',
@@ -4849,7 +4947,7 @@ function hideCustomAlert() {
     customAlertCallback = null;
 }
 
-// 무게 선택 모달 열기
+// 시간 선택 모달 열기
 function openTimePicker(timeType, sessionId) {
     console.log('=== openTimePicker 함수 시작 ===');
     console.log('파라미터들:', { timeType, sessionId });
@@ -4858,100 +4956,121 @@ function openTimePicker(timeType, sessionId) {
     currentSessionId = sessionId;
     
     // 모달 제목 설정
-    const title = timeType === 'start' ? '시작 무게 설정' : '종료 무게 설정';
+    const title = timeType === 'start' ? '시작 시간 설정' : '종료 시간 설정';
     document.getElementById('timePickerTitle').textContent = title;
     
-    // 현재 무게로 초기화 (기본값 0kg)
-    document.getElementById('timePickerMinute').value = '0.0';
+    // 현재 시간으로 초기화
+    const currentDisplay = document.getElementById(`${timeType}_time_display_${sessionId}`).textContent;
+    let currentHour = 0;
+    let currentMinute = 0;
+    
+    if (currentDisplay && currentDisplay !== '시작시간' && currentDisplay !== '종료시간') {
+        // 기존에 설정된 시간이 있으면 그 값을 사용
+        const timeParts = currentDisplay.split(':');
+        if (timeParts.length === 2) {
+            currentHour = parseInt(timeParts[0]) || 0;
+            currentMinute = parseInt(timeParts[1]) || 0;
+        }
+    } else {
+        // 기존 시간이 없으면 현재 시간을 기본값으로 설정
+        const now = new Date();
+        currentHour = now.getHours();
+        currentMinute = Math.round(now.getMinutes() / 5) * 5; // 5분 단위로 반올림
+        if (currentMinute >= 60) {
+            currentMinute = 0;
+            currentHour = (currentHour + 1) % 24;
+        }
+    }
+    
+    // 시간 선택 옵션 생성
+    const hourSelect = document.getElementById('timePickerHour');
+    const minuteSelect = document.getElementById('timePickerMinute');
+    
+    hourSelect.innerHTML = '';
+    minuteSelect.innerHTML = '';
+    
+    // 시간 옵션 (0-23)
+    for (let h = 0; h < 24; h++) {
+        const option = document.createElement('option');
+        option.value = h;
+        option.textContent = h.toString().padStart(2, '0');
+        if (h === currentHour) option.selected = true;
+        hourSelect.appendChild(option);
+    }
+    
+    // 분 옵션 (0-59, 5분 단위)
+    for (let m = 0; m < 60; m += 5) {
+        const option = document.createElement('option');
+        option.value = m;
+        option.textContent = m.toString().padStart(2, '0');
+        if (m === currentMinute) option.selected = true;
+        minuteSelect.appendChild(option);
+    }
     
     // 모달 표시
     const modal = new bootstrap.Modal(document.getElementById('timePickerModal'));
     modal.show();
-    
-    console.log('무게 선택 모달 열기 완료');
 }
 
-// 무게 선택 확인
+// 시간 선택 확인
 function confirmTimeSelection() {
     console.log('=== confirmTimeSelection 함수 시작 ===');
     
-    const selectedWeight = document.getElementById('timePickerMinute').value;
-    const selectedTime = `${selectedWeight}kg`;
+    const selectedHour = document.getElementById('timePickerHour').value;
+    const selectedMinute = document.getElementById('timePickerMinute').value;
+    const selectedTime = `${selectedHour.padStart(2, '0')}:${selectedMinute.padStart(2, '0')}`;
     
-    console.log('선택된 무게:', selectedTime);
-    console.log('무게 타입:', currentTimeType);
-    console.log('세션 ID:', currentSessionId);
+    console.log('선택된 시간:', selectedTime);
     
-    // 버튼 텍스트 업데이트
+    // 화면에 시간 표시
     const displayElement = document.getElementById(`${currentTimeType}_time_display_${currentSessionId}`);
     if (displayElement) {
         displayElement.textContent = selectedTime;
-        console.log('버튼 텍스트 업데이트 완료:', selectedTime);
+        console.log('시간 표시 업데이트 완료');
     }
     
     // 모달 닫기
     const modal = bootstrap.Modal.getInstance(document.getElementById('timePickerModal'));
     modal.hide();
     
-    // 즉시 서버에 저장
+    // 바로 서버에 저장
     saveTimeToServer();
     
-    console.log('무게 선택 완료');
+    console.log('시간 선택 모달 닫기 완료');
 }
 
-// 무게를 서버에 저장
+// 시간을 서버에 저장
 function saveTimeToServer() {
     console.log('=== saveTimeToServer 함수 시작 ===');
     
-    const startTimeElement = document.getElementById(`start_time_display_${currentSessionId}`);
-    const endTimeElement = document.getElementById(`end_time_display_${currentSessionId}`);
+    const selectedHour = document.getElementById('timePickerHour').value;
+    const selectedMinute = document.getElementById('timePickerMinute').value;
+    const selectedTime = `${selectedHour.padStart(2, '0')}:${selectedMinute.padStart(2, '0')}`;
     
-    // 텍스트 내용을 가져와서 공백과 줄바꿈 제거
-    const startWeight = startTimeElement ? startTimeElement.textContent.trim() : '';
-    const endWeight = endTimeElement ? endTimeElement.textContent.trim() : '';
+    console.log('저장할 시간:', selectedTime);
+    console.log('시간 타입:', currentTimeType);
+    console.log('세션 ID:', currentSessionId);
     
-    console.log('현재 시작무게:', `"${startWeight}"`);
-    console.log('현재 종료무게:', `"${endWeight}"`);
-    
-    // 시작무게와 종료무게가 모두 설정되었을 때만 저장
-    if (startWeight !== '시작시간' && startWeight !== '' && endWeight !== '종료시간' && endWeight !== '') {
-        // AJAX 요청으로 서버에 무게 업데이트
-        fetch('my_workouts_ing.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `action=update_workout_time&session_id=${currentSessionId}&start_time=${encodeURIComponent(startWeight)}&end_time=${encodeURIComponent(endWeight)}`
-        })
-        .then(response => {
-            console.log('Response status:', response.status);
-            console.log('Response headers:', response.headers);
-            return response.text().then(text => {
-                console.log('Response text:', text);
-                try {
-                    return JSON.parse(text);
-                } catch (e) {
-                    console.error('JSON parse error:', e);
-                    console.error('Response was not JSON:', text);
-                    throw new Error('서버 응답이 JSON 형식이 아닙니다: ' + text.substring(0, 100));
-                }
-            });
-        })
-        .then(data => {
-            if (data.success) {
-                console.log('운동 무게가 성공적으로 저장되었습니다.');
-            } else {
-                console.error('운동 무게 저장 실패:', data.message);
-                showMessage('운동 무게 저장에 실패했습니다: ' + data.message, 'error');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showMessage('운동 무게 저장 중 오류가 발생했습니다: ' + error.message, 'error');
-        });
-    } else {
-        console.log('시작무게와 종료무게가 모두 설정되지 않아 저장하지 않습니다.');
-    }
+    // 서버에 시간 저장 요청
+    fetch('', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: `action=update_workout_time&session_id=${currentSessionId}&${currentTimeType}_time=${selectedTime}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('시간 저장 성공');
+        } else {
+            console.error('시간 저장 실패:', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('시간 저장 오류:', error);
+    });
 }
 
 // 운동 시간 업데이트 (기존 함수 수정)

@@ -15,6 +15,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // 프리/엔드루틴 설정 저장
             $pre_routine = $_POST['pre_routine'] ?? '';
             $post_routine = $_POST['post_routine'] ?? '';
+            $pre_routine_enabled = isset($_POST['pre_routine_enabled']) ? 1 : 0;
+            $post_routine_enabled = isset($_POST['post_routine_enabled']) ? 1 : 0;
             
             // 기존 설정 확인
             $stmt = $pdo->prepare("SELECT id FROM m_routine_settings WHERE user_id = ?");
@@ -23,12 +25,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
             if ($existing) {
                 // 기존 설정 업데이트
-                $stmt = $pdo->prepare("UPDATE m_routine_settings SET pre_routine = ?, post_routine = ? WHERE user_id = ?");
-                $stmt->execute([$pre_routine, $post_routine, $user['id']]);
+                $stmt = $pdo->prepare("UPDATE m_routine_settings SET pre_routine = ?, post_routine = ?, pre_routine_enabled = ?, post_routine_enabled = ? WHERE user_id = ?");
+                $stmt->execute([$pre_routine, $post_routine, $pre_routine_enabled, $post_routine_enabled, $user['id']]);
             } else {
                 // 새 설정 생성
-                $stmt = $pdo->prepare("INSERT INTO m_routine_settings (user_id, pre_routine, post_routine) VALUES (?, ?, ?)");
-                $stmt->execute([$user['id'], $pre_routine, $post_routine]);
+                $stmt = $pdo->prepare("INSERT INTO m_routine_settings (user_id, pre_routine, post_routine, pre_routine_enabled, post_routine_enabled) VALUES (?, ?, ?, ?, ?)");
+                $stmt->execute([$user['id'], $pre_routine, $post_routine, $pre_routine_enabled, $post_routine_enabled]);
             }
             
             $response = ['success' => true, 'message' => '루틴 설정이 저장되었습니다.'];
@@ -81,12 +83,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     
     // 현재 루틴 설정 가져오기
 $pdo = getDB();
-$stmt = $pdo->prepare("SELECT pre_routine, post_routine FROM m_routine_settings WHERE user_id = ?");
+$stmt = $pdo->prepare("SELECT pre_routine, post_routine, pre_routine_enabled, post_routine_enabled FROM m_routine_settings WHERE user_id = ?");
 $stmt->execute([$user['id']]);
 $routineSettings = $stmt->fetch(PDO::FETCH_ASSOC);
 
 $preRoutine = $routineSettings['pre_routine'] ?? '';
 $postRoutine = $routineSettings['post_routine'] ?? '';
+$preRoutineEnabled = $routineSettings['pre_routine_enabled'] ?? 1;
+$postRoutineEnabled = $routineSettings['post_routine_enabled'] ?? 1;
 }
 ?>
 
@@ -137,11 +141,25 @@ $postRoutine = $routineSettings['post_routine'] ?? '';
                 <div class="card-body">
                     <form id="routineForm">
                         <div class="mb-3">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="pre_routine_enabled" name="pre_routine_enabled" 
+                                       <?= $preRoutineEnabled ? 'checked' : '' ?>>
+                                <label class="form-check-label fw-bold" for="pre_routine_enabled">
+                                    프리루틴 사용
+                                </label>
+                            </div>
                             <label for="pre_routine" class="form-label">프리루틴 (운동 전)</label>
                             <textarea class="form-control" id="pre_routine" name="pre_routine" rows="4" 
                                       placeholder="운동 전 루틴을 입력하세요...&#10;예: 맨몸스쿼트 100개, 트레드밀 10분"><?= htmlspecialchars($preRoutine) ?></textarea>
                         </div>
                         <div class="mb-3">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="post_routine_enabled" name="post_routine_enabled" 
+                                       <?= $postRoutineEnabled ? 'checked' : '' ?>>
+                                <label class="form-check-label fw-bold" for="post_routine_enabled">
+                                    엔드루틴 사용
+                                </label>
+                            </div>
                             <label for="post_routine" class="form-label">엔드루틴 (운동 후)</label>
                             <textarea class="form-control" id="post_routine" name="post_routine" rows="4" 
                                       placeholder="운동 후 루틴을 입력하세요...&#10;예: 스트레칭 10분, 샤워"><?= htmlspecialchars($postRoutine) ?></textarea>

@@ -57,13 +57,26 @@ try {
     }
     
     // 사용자의 루틴 설정 가져오기
-    $stmt = $pdo->prepare("SELECT pre_routine, post_routine FROM m_routine_settings WHERE user_id = ?");
+    $stmt = $pdo->prepare("SELECT pre_routine, post_routine, pre_routine_enabled, post_routine_enabled FROM m_routine_settings WHERE user_id = ?");
     $stmt->execute([$user_id]);
     $routine_settings = $stmt->fetch();
     
     if (!$routine_settings) {
         http_response_code(404);
         echo json_encode(['success' => false, 'message' => '루틴 설정을 찾을 수 없습니다.']);
+        exit;
+    }
+    
+    // 루틴 사용 여부 확인
+    if ($routine_type === 'pre' && !$routine_settings['pre_routine_enabled']) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => '프리루틴이 비활성화되어 있습니다.']);
+        exit;
+    }
+    
+    if ($routine_type === 'post' && !$routine_settings['post_routine_enabled']) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => '엔드루틴이 비활성화되어 있습니다.']);
         exit;
     }
     

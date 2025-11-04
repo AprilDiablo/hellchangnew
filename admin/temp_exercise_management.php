@@ -5,6 +5,25 @@ require_once '../config/database.php';
 
 $pdo = getDB();
 
+// AJAX 요청 처리 (유사어 목록 가져오기)
+if (isset($_GET['action']) && $_GET['action'] === 'get_aliases') {
+    $exId = (int)($_GET['ex_id'] ?? 0);
+    
+    if ($exId > 0) {
+        $stmt = $pdo->prepare("SELECT alias FROM m_exercise_alias WHERE ex_id = ? ORDER BY alias");
+        $stmt->execute([$exId]);
+        $aliases = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'aliases' => $aliases]);
+        exit;
+    } else {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => '운동 ID가 필요합니다.']);
+        exit;
+    }
+}
+
 // 상태별 필터링
 $status = isset($_GET['status']) ? $_GET['status'] : 'pending';
 $validStatuses = ['pending', 'approved', 'rejected', 'all'];
@@ -104,35 +123,156 @@ $recentStatsStmt = $pdo->prepare($recentStatsSql);
 $recentStatsStmt->execute();
 $recentStats = $recentStatsStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// 정식 운동 목록 (승인 시 연결용)
-$exerciseSql = "SELECT ex_id, name_kr, name_en FROM m_exercise ORDER BY name_kr";
+// 정식 운동 목록 (승인 시 연결용) - 별칭도 함께 조회
+$exerciseSql = "
+    SELECT DISTINCT e.ex_id, e.name_kr, e.name_en
+    FROM m_exercise e
+    LEFT JOIN m_exercise_alias a ON e.ex_id = a.ex_id
+    ORDER BY e.name_kr
+";
 $exerciseStmt = $pdo->prepare($exerciseSql);
 $exerciseStmt->execute();
 $exercises = $exerciseStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// 처리 액션
-if ($_POST) {
+// 별칭 목록도 함께 조회 (검색용)
+$aliasSql = "SELECT alias, ex_id FROM m_exercise_alias";
+$aliasStmt = $pdo->prepare($aliasSql);
+$aliasStmt->execute();
+$aliases = $aliasStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// 유사어 관리 액션 처리 (AJAX)
+if ($_POST && isset($_POST['action'])) {
     $action = $_POST['action'] ?? '';
-    $tempExId = (int)($_POST['temp_ex_id'] ?? 0);
     
-    if ($tempExId > 0) {
-        try {
-            $pdo->beginTransaction();
+    if ($action === 'add_alias') {
+        // 유사어 추가 (AJAX 요청)
+        header('Content-Type: application/json');
+        $exId = (int)($_POST['ex_id'] ?? 0);
+        $alias = trim($_POST['alias'] ?? '');
+        
+        if ($exId > 0 && !empty($alias)) {
+            try {
+                $pdo->beginTransaction();
+                // 중복 확인
+                $checkStmt = $pdo->prepare("SELECT alias FROM m_exercise_alias WHERE alias = ?");
+                $checkStmt->execute([$alias]);
+                if ($checkStmt->fetch()) {
+                    $pdo->rollBack();
+                    echo json_encode(['success' => false, 'message' => '이미 등록된 유사어입니다.']);
+                    exit;
+                }
+                
+                $insertStmt = $pdo->prepare("INSERT INTO m_exercise_alias (alias, ex_id) VALUES (?, ?)");
+                $insertStmt->execute([$alias, $exId]);
+                $pdo->commit();
+                echo json_encode(['success' => true, 'message' => '유사어가 추가되었습니다.']);
+                exit;
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                exit;
+            }
+        } else {
+            echo json_encode(['success' => false, 'message' => '운동과 유사어를 입력해주세요.']);
+            exit;
+        }
+    } elseif ($action === 'update_alias') {
+        // 유사어 수정 (AJAX 요청)
+        header('Content-Type: application/json');
+        $oldAlias = trim($_POST['old_alias'] ?? '');
+        $newAlias = trim($_POST['new_alias'] ?? '');
+        $exId = (int)($_POST['ex_id'] ?? 0);
+        
+        if (!empty($oldAlias) && !empty($newAlias) && $exId > 0) {
+            try {
+                $pdo->beginTransaction();
+                // 중복 확인 (자기 자신 제외)
+                $checkStmt = $pdo->prepare("SELECT alias FROM m_exercise_alias WHERE alias = ? AND alias != ?");
+                $checkStmt->execute([$newAlias, $oldAlias]);
+                if ($checkStmt->fetch()) {
+                    $pdo->rollBack();
+                    echo json_encode(['success' => false, 'message' => '이미 등록된 유사어입니다.']);
+                    exit;
+                }
+                
+                // 기존 유사어 삭제 후 새로 추가
+                $deleteStmt = $pdo->prepare("DELETE FROM m_exercise_alias WHERE alias = ?");
+                $deleteStmt->execute([$oldAlias]);
+                
+                $insertStmt = $pdo->prepare("INSERT INTO m_exercise_alias (alias, ex_id) VALUES (?, ?)");
+                $insertStmt->execute([$newAlias, $exId]);
+                $pdo->commit();
+                echo json_encode(['success' => true, 'message' => '유사어가 수정되었습니다.']);
+                exit;
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                exit;
+            }
+        } else {
+            echo json_encode(['success' => false, 'message' => '유사어를 입력해주세요.']);
+            exit;
+        }
+    } elseif ($action === 'delete_alias') {
+        // 유사어 삭제 (AJAX 요청)
+        header('Content-Type: application/json');
+        $alias = trim($_POST['alias'] ?? '');
+        
+        if (!empty($alias)) {
+            try {
+                $pdo->beginTransaction();
+                $deleteStmt = $pdo->prepare("DELETE FROM m_exercise_alias WHERE alias = ?");
+                $deleteStmt->execute([$alias]);
+                $pdo->commit();
+                echo json_encode(['success' => true, 'message' => '유사어가 삭제되었습니다.']);
+                exit;
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                exit;
+            }
+        } else {
+            echo json_encode(['success' => false, 'message' => '유사어를 선택해주세요.']);
+            exit;
+        }
+    }
+}
+
+// 처리 액션 (승인/거부)
+if ($_POST && isset($_POST['action'])) {
+    $action = $_POST['action'] ?? '';
+    
+    // 유사어 관리 액션은 이미 처리됨
+    if ($action === 'add_alias' || $action === 'update_alias' || $action === 'delete_alias') {
+        // 이미 처리됨, 여기서는 건너뜀
+    } else {
+        $tempExId = (int)($_POST['temp_ex_id'] ?? 0);
+        
+        if ($tempExId > 0) {
+            try {
+                $pdo->beginTransaction();
             
             if ($action === 'approve') {
                 $approvedExId = (int)($_POST['approved_ex_id'] ?? 0);
                 if ($approvedExId > 0) {
-                    // 기존 운동과 연결
-                    $updateSql = "UPDATE m_temp_exercise SET status = 'approved', approved_ex_id = ? WHERE temp_ex_id = ?";
+                    // 선택한 운동의 올바른 이름 가져오기
+                    $exerciseStmt = $pdo->prepare("SELECT name_kr FROM m_exercise WHERE ex_id = ?");
+                    $exerciseStmt->execute([$approvedExId]);
+                    $exercise = $exerciseStmt->fetch(PDO::FETCH_ASSOC);
+                    $correctExerciseName = $exercise['name_kr'] ?? '';
+                    
+                    // 기존 운동과 연결 (오타 수정: 올바른 운동명으로 업데이트)
+                    $updateSql = "UPDATE m_temp_exercise SET status = 'approved', approved_ex_id = ?, exercise_name = ? WHERE temp_ex_id = ?";
                     $updateStmt = $pdo->prepare($updateSql);
-                    $updateStmt->execute([$approvedExId, $tempExId]);
+                    $updateStmt->execute([$approvedExId, $correctExerciseName, $tempExId]);
                     
                     // 임시 운동을 사용하는 모든 운동 기록을 정식 운동으로 변경
-                    $updateWorkoutSql = "UPDATE m_workout_exercise SET ex_id = ?, temp_ex_id = NULL, is_temp = 0 WHERE temp_ex_id = ?";
+                    // original_exercise_name도 올바른 이름으로 업데이트 (오타 수정)
+                    $updateWorkoutSql = "UPDATE m_workout_exercise SET ex_id = ?, temp_ex_id = NULL, is_temp = 0, original_exercise_name = ? WHERE temp_ex_id = ?";
                     $updateWorkoutStmt = $pdo->prepare($updateWorkoutSql);
-                    $updateWorkoutStmt->execute([$approvedExId, $tempExId]);
+                    $updateWorkoutStmt->execute([$approvedExId, $correctExerciseName, $tempExId]);
                     
-                    $message = "임시 운동이 기존 운동과 연결되었습니다.";
+                    $message = "임시 운동이 기존 운동과 연결되었습니다. (오타가 수정되었습니다)";
                 } else {
                     // 새 운동으로 등록
                     $exerciseName = trim($_POST['exercise_name'] ?? '');
@@ -182,6 +322,7 @@ if ($_POST) {
         } catch (Exception $e) {
             $pdo->rollBack();
             $error = $e->getMessage();
+        }
         }
     }
 }
@@ -250,6 +391,18 @@ $message = $_GET['message'] ?? '';
             padding: 25px;
             margin-bottom: 20px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        /* 검색 리스트 스타일 */
+        .exercise-list-item {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .exercise-list-item:hover {
+            background-color: #f8f9fa;
+        }
+        .exercise-list-item.selected {
+            background-color: #0d6efd;
+            color: white;
         }
     </style>
 </head>
@@ -505,12 +658,54 @@ $message = $_GET['message'] ?? '';
                         <div id="connectSection">
                             <div class="mb-3">
                                 <label class="form-label">연결할 운동 선택</label>
-                                <select name="approved_ex_id" class="form-select" id="exerciseSelect">
-                                    <option value="">운동을 선택하세요</option>
-                                    <?php foreach ($exercises as $ex): ?>
-                                        <option value="<?= $ex['ex_id'] ?>"><?= htmlspecialchars($ex['name_kr']) ?> (<?= htmlspecialchars($ex['name_en']) ?>)</option>
-                                    <?php endforeach; ?>
-                                </select>
+                                <input type="hidden" name="approved_ex_id" id="selectedExerciseId" value="">
+                                <input type="text" class="form-control mb-2" id="exerciseSearch" placeholder="운동명 또는 별칭을 입력하여 검색하세요..." autocomplete="off">
+                                <div id="exerciseListContainer" style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.375rem; display: none;">
+                                    <div id="exerciseList" class="list-group list-group-flush">
+                                        <!-- 검색 결과가 여기에 표시됩니다 -->
+                                    </div>
+                                </div>
+                                <div id="selectedExercise" class="mt-2" style="display: none;">
+                                    <div class="alert alert-info mb-0 d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <i class="fas fa-check-circle me-2"></i>
+                                            <strong>선택된 운동:</strong> <span id="selectedExerciseName"></span>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSelection()">
+                                            <i class="fas fa-times"></i> 선택 해제
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="alert alert-warning mb-0 mt-2">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    <small>
+                                        <strong>오타 처리:</strong> 운동을 선택하면 오타가 자동으로 올바른 운동명으로 수정됩니다. 
+                                        별칭으로도 검색할 수 있습니다.
+                                    </small>
+                                </div>
+                                
+                                <!-- 유사어 관리 섹션 -->
+                                <div id="aliasManagementSection" class="mt-3" style="display: none;">
+                                    <div class="card border-primary">
+                                        <div class="card-header bg-primary text-white">
+                                            <h6 class="mb-0"><i class="fas fa-tags me-2"></i>유사어 관리</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <!-- 유사어 목록 -->
+                                            <div id="aliasList" class="mb-3">
+                                                <div class="text-muted small">유사어 목록이 여기에 표시됩니다.</div>
+                                            </div>
+                                            
+                                            <!-- 유사어 추가 폼 -->
+                                            <div class="input-group mb-2">
+                                                <input type="text" class="form-control" id="newAliasInput" placeholder="새 유사어를 입력하세요...">
+                                                <button type="button" class="btn btn-success" onclick="addAlias()">
+                                                    <i class="fas fa-plus"></i> 추가
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         
@@ -621,10 +816,29 @@ $message = $_GET['message'] ?? '';
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // 운동 목록을 JavaScript 변수로 전달
+        const exercisesList = <?= json_encode($exercises) ?>;
+        // 별칭 목록도 JavaScript 변수로 전달 (검색용)
+        const aliasesList = <?= json_encode($aliases) ?>;
+        
+        // 별칭을 ex_id로 매핑
+        const aliasToExId = {};
+        aliasesList.forEach(alias => {
+            if (!aliasToExId[alias.ex_id]) {
+                aliasToExId[alias.ex_id] = [];
+            }
+            aliasToExId[alias.ex_id].push(alias.alias.toLowerCase());
+        });
         function approveExercise(tempExId, exerciseName) {
             document.getElementById('approveTempExId').value = tempExId;
             document.getElementById('approveExerciseName').value = exerciseName;
             document.getElementById('newExerciseName').value = exerciseName;
+            
+            // 검색 필드 및 선택 초기화
+            document.getElementById('exerciseSearch').value = '';
+            document.getElementById('selectedExerciseId').value = '';
+            document.getElementById('selectedExercise').style.display = 'none';
+            document.getElementById('exerciseListContainer').style.display = 'none';
             
             const modal = new bootstrap.Modal(document.getElementById('approveModal'));
             modal.show();
@@ -638,8 +852,327 @@ $message = $_GET['message'] ?? '';
             modal.show();
         }
         
-        // 승인 방법 변경 시 섹션 표시/숨김
+        // 운동 선택 함수
+        function selectExercise(exId, nameKr, nameEn) {
+            document.getElementById('selectedExerciseId').value = exId;
+            document.getElementById('selectedExerciseName').textContent = nameKr + (nameEn ? ' (' + nameEn + ')' : '');
+            document.getElementById('selectedExercise').style.display = 'block';
+            document.getElementById('exerciseListContainer').style.display = 'none';
+            document.getElementById('exerciseSearch').value = '';
+            
+            // 유사어 관리 섹션 표시 및 유사어 목록 로드
+            loadAliases(exId);
+        }
+        
+        // 유사어 목록 로드
+        function loadAliases(exId) {
+            const aliasManagementSection = document.getElementById('aliasManagementSection');
+            const aliasList = document.getElementById('aliasList');
+            
+            if (!exId) {
+                aliasManagementSection.style.display = 'none';
+                return;
+            }
+            
+            // AJAX로 유사어 목록 가져오기
+            fetch('?action=get_aliases&ex_id=' + exId)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayAliases(data.aliases, exId);
+                        aliasManagementSection.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+        
+        // 유사어 목록 표시
+        function displayAliases(aliases, exId) {
+            const aliasList = document.getElementById('aliasList');
+            
+            if (aliases.length === 0) {
+                aliasList.innerHTML = '<div class="text-muted small">등록된 유사어가 없습니다.</div>';
+                return;
+            }
+            
+            let html = '<div class="list-group list-group-flush">';
+            aliases.forEach(alias => {
+                html += `
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="badge bg-info me-2">${escapeHtml(alias)}</span>
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-sm btn-outline-primary me-1" onclick="editAlias('${escapeHtml(alias)}', ${exId})">
+                                <i class="fas fa-edit"></i> 수정
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteAlias('${escapeHtml(alias)}')">
+                                <i class="fas fa-trash"></i> 삭제
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            aliasList.innerHTML = html;
+        }
+        
+        // 유사어 추가
+        function addAlias() {
+            const exId = document.getElementById('selectedExerciseId').value;
+            const aliasInput = document.getElementById('newAliasInput');
+            const alias = aliasInput.value.trim();
+            
+            if (!exId) {
+                alert('먼저 운동을 선택해주세요.');
+                return;
+            }
+            
+            if (!alias) {
+                alert('유사어를 입력해주세요.');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('action', 'add_alias');
+            formData.append('ex_id', exId);
+            formData.append('alias', alias);
+            
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    aliasInput.value = '';
+                    loadAliases(exId);
+                    alert('유사어가 추가되었습니다.');
+                } else {
+                    alert(data.message || '유사어 추가에 실패했습니다.');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('오류가 발생했습니다.');
+            });
+        }
+        
+        // 유사어 수정
+        function editAlias(oldAlias, exId) {
+            const newAlias = prompt('유사어를 수정하세요:', oldAlias);
+            
+            if (!newAlias || newAlias.trim() === '') {
+                return;
+            }
+            
+            if (newAlias === oldAlias) {
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('action', 'update_alias');
+            formData.append('ex_id', exId);
+            formData.append('old_alias', oldAlias);
+            formData.append('new_alias', newAlias.trim());
+            
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    loadAliases(exId);
+                    alert('유사어가 수정되었습니다.');
+                } else {
+                    alert(data.message || '유사어 수정에 실패했습니다.');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('오류가 발생했습니다.');
+            });
+        }
+        
+        // 유사어 삭제
+        function deleteAlias(alias) {
+            if (!confirm('이 유사어를 삭제하시겠습니까?')) {
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('action', 'delete_alias');
+            formData.append('alias', alias);
+            
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const exId = document.getElementById('selectedExerciseId').value;
+                    loadAliases(exId);
+                    alert('유사어가 삭제되었습니다.');
+                } else {
+                    alert(data.message || '유사어 삭제에 실패했습니다.');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('오류가 발생했습니다.');
+            });
+        }
+        
+        // 선택 해제 함수
+        function clearSelection() {
+            document.getElementById('aliasManagementSection').style.display = 'none';
+            document.getElementById('selectedExerciseId').value = '';
+            document.getElementById('selectedExercise').style.display = 'none';
+            document.getElementById('exerciseSearch').value = '';
+            document.getElementById('exerciseListContainer').style.display = 'none';
+        }
+        
+        // 검색 기능 구현 (운동명 + 별칭 검색)
+        function searchExercises(query) {
+            const container = document.getElementById('exerciseListContainer');
+            const list = document.getElementById('exerciseList');
+            
+            if (!query || query.trim() === '') {
+                container.style.display = 'none';
+                return;
+            }
+            
+            const searchTerm = query.toLowerCase().trim();
+            const filtered = exercisesList.filter(ex => {
+                const nameKr = (ex.name_kr || '').toLowerCase();
+                const nameEn = (ex.name_en || '').toLowerCase();
+                
+                // 운동명 검색
+                if (nameKr.includes(searchTerm) || nameEn.includes(searchTerm)) {
+                    return true;
+                }
+                
+                // 별칭 검색
+                const aliases = aliasToExId[ex.ex_id] || [];
+                for (let i = 0; i < aliases.length; i++) {
+                    if (aliases[i].includes(searchTerm)) {
+                        return true;
+                    }
+                }
+                
+                return false;
+            });
+            
+            if (filtered.length === 0) {
+                list.innerHTML = '<div class="list-group-item text-center text-muted">검색 결과가 없습니다.</div>';
+                container.style.display = 'block';
+                return;
+            }
+            
+            // 최대 50개만 표시
+            const displayList = filtered.slice(0, 50);
+            list.innerHTML = '';
+            
+            displayList.forEach(ex => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item exercise-list-item';
+                item.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${escapeHtml(ex.name_kr || '')}</strong>
+                            ${ex.name_en ? '<small class="text-muted ms-2">(' + escapeHtml(ex.name_en) + ')</small>' : ''}
+                        </div>
+                        <i class="fas fa-chevron-right text-muted"></i>
+                    </div>
+                `;
+                item.addEventListener('click', function() {
+                    selectExercise(ex.ex_id, ex.name_kr, ex.name_en);
+                });
+                list.appendChild(item);
+            });
+            
+            if (filtered.length > 50) {
+                const moreItem = document.createElement('div');
+                moreItem.className = 'list-group-item text-center text-muted';
+                moreItem.textContent = `외 ${filtered.length - 50}개 더 있습니다. 검색어를 더 구체적으로 입력하세요.`;
+                list.appendChild(moreItem);
+            }
+            
+            container.style.display = 'block';
+        }
+        
+        // HTML 이스케이프 함수
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // DOMContentLoaded 이벤트 리스너
         document.addEventListener('DOMContentLoaded', function() {
+            const exerciseSearch = document.getElementById('exerciseSearch');
+            
+            // 검색 입력 필드 이벤트
+            exerciseSearch.addEventListener('input', function(e) {
+                const query = e.target.value;
+                searchExercises(query);
+            });
+            
+            // 검색 필드 포커스 시 전체 목록 표시 (선택되지 않은 경우)
+            exerciseSearch.addEventListener('focus', function() {
+                if (!document.getElementById('selectedExerciseId').value) {
+                    if (exerciseSearch.value.trim() === '') {
+                        // 전체 목록 표시 (최대 50개)
+                        const displayList = exercisesList.slice(0, 50);
+                        const list = document.getElementById('exerciseList');
+                        const container = document.getElementById('exerciseListContainer');
+                        
+                        list.innerHTML = '';
+                        displayList.forEach(ex => {
+                            const item = document.createElement('div');
+                            item.className = 'list-group-item exercise-list-item';
+                            item.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>${escapeHtml(ex.name_kr || '')}</strong>
+                                        ${ex.name_en ? '<small class="text-muted ms-2">(' + escapeHtml(ex.name_en) + ')</small>' : ''}
+                                    </div>
+                                    <i class="fas fa-chevron-right text-muted"></i>
+                                </div>
+                            `;
+                            item.addEventListener('click', function() {
+                                selectExercise(ex.ex_id, ex.name_kr, ex.name_en);
+                            });
+                            list.appendChild(item);
+                        });
+                        
+                        if (exercisesList.length > 50) {
+                            const moreItem = document.createElement('div');
+                            moreItem.className = 'list-group-item text-center text-muted';
+                            moreItem.textContent = `외 ${exercisesList.length - 50}개 더 있습니다. 검색어를 입력하여 찾으세요.`;
+                            list.appendChild(moreItem);
+                        }
+                        
+                        container.style.display = 'block';
+                    }
+                }
+            });
+            
+            // 외부 클릭 시 리스트 닫기
+            document.addEventListener('click', function(e) {
+                const container = document.getElementById('exerciseListContainer');
+                const searchInput = document.getElementById('exerciseSearch');
+                
+                if (!container.contains(e.target) && e.target !== searchInput) {
+                    container.style.display = 'none';
+                }
+            });
+            
+            // 승인 방법 변경 시 섹션 표시/숨김
             const connectRadio = document.getElementById('connectExisting');
             const createRadio = document.getElementById('createNew');
             const connectSection = document.getElementById('connectSection');

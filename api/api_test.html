@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PHP API POST Tester</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; padding: 20px; }
+        form { display: flex; flex-direction: column; max-width: 400px; gap: 10px; margin-bottom: 20px; }
+        input { padding: 8px; }
+        button { padding: 10px; background-color: #007bff; color: white; border: none; cursor: pointer; }
+        pre { background-color: #f4f4f4; padding: 15px; border: 1px solid #ddd; white-space: pre-wrap; word-wrap: break-word; }
+    </style>
+</head>
+<body>
+
+    <h1>API Tester for get_user.php</h1>
+    <form id="api-form">
+        <label for="kakao_id">kakao_id (필수):</label>
+        <input type="text" id="kakao_id" name="kakao_id" value="4351964716">
+
+        <label for="username">username:</label>
+        <input type="text" id="username" name="username" value="웹에서 온 라그리마">
+
+        <label for="email">email:</label>
+        <input type="email" id="email" name="email" value="web_test@example.com">
+
+        <label for="profile_image">profile_image (URL):</label>
+        <input type="text" id="profile_image" name="profile_image" value="http://k.kakaocdn.net/dn/cAmkWq/btsyPBsH7bM/MZvR2kmF4RaQGOPrEEyfp1/img_640x640.jpg">
+
+        <button type="submit">POST 요청 보내기</button>
+    </form>
+
+    <h2>API 응답 결과:</h2>
+    <pre id="response-output">결과가 여기에 표시됩니다.</pre>
+
+    <script>
+        document.getElementById('api-form').addEventListener('submit', function(event) {
+            event.preventDefault(); // 기본 폼 전송 방지
+
+            const formData = new FormData(this);
+            const data = {};
+            formData.forEach((value, key) => {
+                // kakao_id는 숫자로 변환
+                data[key] = key === 'kakao_id' ? parseInt(value, 10) : value;
+            });
+
+            const outputElement = document.getElementById('response-output');
+            outputElement.textContent = '요청 중...';
+
+            fetch('get_user.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                outputElement.textContent = JSON.stringify(result, null, 2); // 결과를 예쁘게 포맷팅
+            })
+            .catch(error => {
+                outputElement.textContent = '오류 발생:\n' + error;
+            });
+        });
+    </script>
+
+</body>
+</html>
